@@ -20,8 +20,8 @@
 
   const MAX_IDLE_WAIT = 30000;
 
-  function createScene(canvas) {
-    const renderer = A.renderer.createRenderer(canvas);
+  function createScene(host) {
+    const renderer = A.renderer.createRenderer(host);
     const emitter = A.utils.createEmitter();
     let subject = null;
     let model = null;
@@ -79,11 +79,14 @@
       }
     }
 
-    function setSubject(hourglass) {
+    function setSubject(hourglass, options) {
+      const prev = subject;
       subject = hourglass || null;
       model = subject ? A.grains.createModel(subject) : null;
       lastLanded = null;
-      lastStatus = null;
+      // Mesmo assunto atualizado (ex.: reiniciado): mantém o status para detectar mudanças ao vivo.
+      if (!prev || !subject || prev.id !== subject.id || (options && options.resetStatus)) lastStatus = null;
+      renderer.invalidate();
       invalidate();
     }
 
@@ -134,6 +137,8 @@
       setReducedMotion,
       setPaused,
       layout: () => renderer.layout(),
+      renderer: () => renderer,
+      isPaused: () => paused,
       getSubject: () => subject,
       getModel: () => model,
       on: (type, fn) => emitter.on(type, fn)

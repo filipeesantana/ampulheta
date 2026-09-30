@@ -1,56 +1,72 @@
 /* ==========================================================================
    Ampulheta — responsive.css
-   Adaptações para tablet, celular e telas baixas.
+   Notebooks, tablets, celulares e telas baixas.
    ========================================================================== */
 
-/* Dispositivos sem mouse: as setas dão lugar ao gesto de deslizar. */
-@media (hover: none) and (pointer: coarse) {
-  .nav-arrow {
+/* Telas médias: o botão "Nova ampulheta" vira só ícone. */
+@media (max-width: 720px) {
+  .topbar__new {
+    width: var(--hit);
+    padding: 0;
+    border-color: transparent;
+    margin-right: 0;
+  }
+
+  .topbar__new-label {
     display: none;
   }
-  .icon-btn:hover,
-  .menu-link:hover,
-  .hg-item:hover,
-  .action:hover {
-    background: transparent;
+
+  .topbar__new .icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .topbar__brand {
+    display: none;
   }
 }
 
-@media (max-width: 760px) {
+/* Celulares */
+@media (max-width: 600px) {
   .drawer {
     width: 100vw;
     border: 0;
   }
 
   .drawer__inner {
-    padding-left: 22px;
-    padding-right: 22px;
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
-  .info__title {
-    font-size: 32px;
-  }
-
-  /* Modais viram folhas que sobem da base */
-  .modal {
+  /* Modais e popovers viram folhas que sobem da base. */
+  .modal,
+  .modal--small,
+  .modal--wide,
+  .popover {
+    inset: auto 0 0 0 !important;
     width: 100vw;
-    max-height: 94dvh;
-    margin: auto 0 0;
-    border-radius: 22px 22px 0 0;
+    max-height: 92dvh;
+    margin: 0;
+    border-radius: 20px 20px 0 0;
     border-bottom: 0;
-    transform: translateY(28px);
+    transform: translate3d(0, 24px, 0);
   }
 
-  .modal--small {
-    width: 100vw;
+  .popover {
+    max-height: 70dvh;
+  }
+
+  .modal.is-open,
+  .popover.is-open {
+    transform: none;
   }
 
   .modal__inner {
-    padding: 22px 20px calc(20px + var(--safe-bottom));
+    padding: 20px 18px calc(18px + var(--safe-bottom));
   }
 
-  .modal__title {
-    font-size: 26px;
+  .popover__inner {
+    padding-bottom: calc(10px + var(--safe-bottom));
   }
 
   .duration-grid {
@@ -68,32 +84,19 @@
 
   .toasts,
   .toasts[popover] {
-    top: calc(64px + var(--safe-top));
+    top: calc(62px + var(--safe-top));
+  }
+
+  .switcher__current {
+    max-width: calc(100vw - 2 * var(--hit) - 32px);
+    padding-left: 14px;
   }
 }
 
-@media (max-width: 420px) {
-  .chrome--top {
-    top: calc(8px + var(--safe-top));
-    left: calc(6px + var(--safe-left));
-    right: calc(6px + var(--safe-right));
-  }
-
-  .caption {
-    bottom: calc(10px + var(--safe-bottom));
-  }
-
-  .caption__name {
-    font-size: 10.5px;
-    letter-spacing: 0.26em;
-  }
-
-  .intro__title {
-    font-size: 27px;
-  }
-
-  .intro__text {
-    font-size: 13px;
+@media (max-width: 400px) {
+  .topbar {
+    left: calc(4px + var(--safe-left));
+    right: calc(4px + var(--safe-right));
   }
 
   .dt__row {
@@ -109,50 +112,61 @@
     flex: 1 1 auto;
   }
 
-  .info__actions {
-    grid-template-columns: 1fr;
-  }
-
-  .tones__list {
-    gap: 8px;
+  .info__actions .btn {
+    flex: 1 1 100%;
   }
 }
 
-/* Telas baixas (celular deitado) */
-@media (max-height: 520px) {
-  .caption {
+/* Telas baixas (notebooks 1366×768 com barras, celular deitado) */
+@media (max-height: 620px) {
+  .dock {
     bottom: calc(6px + var(--safe-bottom));
     gap: 0;
   }
 
-  .caption__status {
-    font-size: 15px;
+  .dock__status {
+    min-height: 30px;
   }
 
   .intro {
-    padding-top: calc(14px + var(--safe-top));
-    padding-bottom: calc(14px + var(--safe-bottom));
+    padding-bottom: calc(18px + var(--safe-bottom));
   }
 
-  .intro__text {
-    display: none;
-  }
-
-  .intro__title {
-    font-size: 24px;
-  }
-
-  .modal {
-    max-height: 96dvh;
+  .intro__body {
+    gap: 8px;
   }
 }
 
-/* Telas muito grandes: tipografia um pouco mais generosa */
-@media (min-width: 1600px) and (min-height: 1000px) {
-  .caption__name {
-    font-size: 12px;
+@media (max-height: 460px) {
+  .dock__position {
+    display: none;
   }
-  .caption__status {
-    font-size: 20px;
+
+  /* Celular deitado: estado e navegação lado a lado, numa única linha. */
+  .dock {
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .dock__status {
+    margin: 0;
+  }
+
+  .intro__brand {
+    display: none;
+  }
+}
+
+/* Dispositivos de toque: sem estados de hover presos após o toque. */
+@media (hover: none) {
+  .icon-btn:hover,
+  .switcher__arrow:hover,
+  .switcher__current:hover,
+  .menu-link:hover,
+  .hg-item:hover,
+  .action-item:hover,
+  .chip:hover {
+    background-color: transparent;
   }
 }

@@ -18,7 +18,7 @@
   </style>
 </head>
 <body>
-  <h1>Ampulheta — testes dos módulos de tempo, grãos, geometria e dados</h1>
+  <h1>Ampulheta — testes de tempo, grãos, geometria, reinício, migração e dados</h1>
   <p class="summary" id="summary">Executando…</p>
   <ul id="results"></ul>
 
@@ -182,7 +182,8 @@
       test('backup: JSON inválido, formato e versão', () => {
         eq(A.backup.parseBackup('{').error, 'json');
         eq(A.backup.parseBackup('{"format":"outro","version":1,"hourglasses":[]}').error, 'format');
-        eq(A.backup.parseBackup('{"format":"hourglass-backup","version":2,"hourglasses":[]}').error, 'version-newer');
+        eq(A.backup.parseBackup('{"format":"hourglass-backup","version":99,"hourglasses":[]}').error, 'version-newer');
+        eq(A.backup.parseBackup('{"format":"hourglass-backup","version":0,"hourglasses":[]}').error, 'version-invalid');
         eq(A.backup.parseBackup('{"format":"hourglass-backup","version":"1","hourglasses":[]}').error, 'version-invalid');
       });
       test('backup: registros corrompidos e IDs duplicados', () => {
@@ -202,6 +203,125 @@
         const back = A.model.normalize(JSON.parse(JSON.stringify(A.model.toBackup(hg))));
         eq(back.value.start, hg.start);
         eq(back.value.end, hg.end);
+      });
+
+      /* Reinício e duração canônica ----------------------------------- */
+      test('reiniciar preserva 30 minutos exatos', () => {
+        const hg = A.model.create({ name: 'x', start: 0, end: 1800000, mode: 'duration', duration: { minutes: 30 } });
+        const at = local(2026, 9, 30, 14, 0, 0);
+        const r = A.model.restartInterval(hg, at);
+        eq(r.start, at);
+        eq(r.end - r.start, 30 * 60000);
+      });
+      test('reiniciar preserva 1 mês de calendário (não 30 dias fixos)', () => {
+        const hg = A.model.create({ name: 'x', start: local(2026, 1, 1), end: local(2026, 2, 1), mode: 'duration', duration: { months: 1 } });
+        const r = A.model.restartInterval(hg, local(2026, 2, 10, 9));
+        const e = new Date(r.end);
+        eq(e.getMonth(), 2);
+        eq(e.getDate(), 10);
+        eq(e.getHours(), 9);
+      });
+      test('reiniciar preserva 94 anos', () => {
+        const at = local(2026, 9, 30, 12);
+        const hg = A.model.create({ name: 'x', start: at, end: T.addDuration(at, { years: 94 }), mode: 'duration', duration: { years: 94 } });
+        const r = A.model.restartInterval(hg, local(2030, 1, 1));
+        eq(new Date(r.end).getFullYear(), 2124);
+        eq(T.diffCalendar(r.start, r.end).years, 94);
+      });
+      test('modo datas: a duração canônica vem de término − início', () => {
+        const d = A.model.deriveDuration(local(2023, 2, 6), local(2027, 12, 15));
+        eq(d.years, 4);
+        eq(d.months, 10);
+        eq(d.days, 9);
+      });
+      test('duração inválida é recusada', () => {
+        eq(A.model.cleanDuration({ minutes: -5 }), null);
+        eq(A.model.cleanDuration({ minutes: 1.5 }), null);
+        eq(A.model.cleanDuration({}), null);
+        eq(A.model.cleanDuration({ hours: 2 }).hours, 2);
+      });
+
+      /* Migração ------------------------------------------------------- */
+      test('registro da versão 1 é migrado (schemaVersion, mode, duration)', () => {
+        const res = A.model.normalize({ id: 'v1', name: 'Vida', start: Date.UTC(1995, 2, 10, 3), end: Date.UTC(2089, 2, 10, 3), tone: 'areia', archived: false, order: 0 });
+        eq(res.ok, true);
+        eq(res.migrated, true);
+        eq(res.value.schemaVersion, 2);
+        eq(res.value.mode, 'dates');
+        eq(res.value.duration.years, 94);
+      });
+      test('registro da versão 2 não é migrado de novo', () => {
+        const v2 = A.model.normalize({ id: 'v1', name: 'Vida', start: 0, end: 1800000 }).value;
+        const again = A.model.normalize(JSON.parse(JSON.stringify(v2)));
+        eq(again.migrated, false);
+        eq(again.value.duration.minutes, 30);
+      });
+      test('backup da versão 1 continua importável', () => {
+        const parsed = A.backup.parseBackup(JSON.stringify({
+          format: 'hourglass-backup', version: 1,
+          hourglasses: [{ id: 'a', name: 'Meia hora', start: '2026-09-30T12:00:00.000Z', end: '2026-09-30T12:30:00.000Z', tone: 'cinza' }]
+        }));
+        eq(parsed.ok, true);
+        eq(parsed.version, 1);
+        eq(parsed.records[0].duration.minutes, 30);
+        eq(parsed.records[0].tone, 'cinza');
+      });
+      test('backup da versão 2 preserva modo e duração', () => {
+        const hg = A.model.create({ name: 'Um mês', start: local(2026, 1, 31), end: local(2026, 2, 28), mode: 'duration', duration: { months: 1 } });
+        const parsed = A.backup.parseBackup(JSON.stringify({ format: 'hourglass-backup', version: 2, hourglasses: [A.model.toBackup(hg)] }));
+        eq(parsed.records[0].mode, 'duration');
+        eq(parsed.records[0].duration.months, 1);
+        eq(parsed.records[0].duration.days, 0);
+      });
+
+      /* Estados e formatação humana ---------------------------------- */
+      test('ampulheta concluída: 100%, todos os grãos caídos, nenhum próximo', () => {
+        const hg = { start: 0, end: 60000 };
+        const s = T.computeState(hg, 120000);
+        eq(s.status, 'finished');
+        const m = G.createModel(hg);
+        const d = G.describe(m, 120000);
+        eq(d.fallen, m.count);
+        eq(d.remaining, 0);
+        eq(d.nextIn, null);
+      });
+      test('percentual humano', () => {
+        eq(F.formatPercentHuman(0.4725), '47,2%');
+        eq(F.formatPercentHuman(4.1e-8), '0,0000041%');
+        ok(F.formatPercentHuman(1 - 1e-7) !== '100%', 'nunca 100% antes do fim');
+        eq(F.formatPercentShort(0.4725), '47%');
+        eq(F.formatPercentShort(1e-6), 'menos de 1%');
+      });
+      test('durações curtas, médias e longas: grãos e intervalo', () => {
+        for (const ms of [5e3, 3e4, 6e4, 36e5, 864e5, 30 * 864e5, T.AVG_YEAR, 10 * T.AVG_YEAR, 94 * T.AVG_YEAR]) {
+          const m = G.createModel({ start: 0, end: ms });
+          ok(m.count >= G.GRAIN_MIN && m.count <= G.GRAIN_MAX, 'limites para ' + ms);
+          ok(Math.abs(m.grainMs * m.count - ms) < 1e-3 * ms, 'soma dos grãos = duração');
+          eq(G.fallenAt(m, ms / 2), Math.floor(m.count / 2));
+        }
+      });
+
+      /* Areia durante a virada --------------------------------------- */
+      test('virada: a areia conserva a área em qualquer ângulo', () => {
+        const glass = A.geometry.createGlass();
+        const sand = A.geometry.createSandModel(glass);
+        const poly = sand.bulbPolygon(-1);
+        for (const deg of [0, 30, 60, 90, 120, 150, 180]) {
+          const f = sand.fluidSurface(poly, (deg * Math.PI) / 180, sand.V0);
+          ok(Math.abs(f.area - sand.V0) < sand.V0 * 1e-4, 'área em ' + deg + '°');
+        }
+        const end = sand.fluidSurface(poly, Math.PI, sand.V0);
+        ok(Math.abs(end.h - sand.L0) < 1e-3, 'ao fim da virada a superfície coincide com a ampulheta cheia');
+      });
+      test('tabelas de massa: inversa coerente', () => {
+        const glass = A.geometry.createGlass();
+        const sand = A.geometry.createSandModel(glass);
+        for (const f of [0.001, 0.2, 0.5, 0.8, 0.999]) {
+          const L = sand.topLevelFor(sand.V0 * f);
+          ok(Math.abs(sand.topVolume(L) - sand.V0 * f) < sand.V0 * 1e-6, 'topo ' + f);
+          const H = sand.bottomApexFor(sand.V0 * f);
+          ok(Math.abs(sand.bottomVolume(H) - sand.V0 * f) < sand.V0 * 2e-3, 'base ' + f);
+        }
       });
 
       /* Resultado ----------------------------------------------------- */

@@ -1,15 +1,17 @@
 /*
  * Ampulheta — app.js
  * Inicialização e coordenação: qual ampulheta está à vista, navegação,
- * atalhos de teclado, preferências e service worker.
+ * ações sobre a ampulheta atual, atalhos de teclado, preferências e
+ * service worker.
  */
 (function (root) {
   'use strict';
 
   const A = root.Ampulheta;
   const { isTypingTarget } = A.utils;
+  const F = A.format;
 
-  A.VERSION = '1.0.0';
+  A.VERSION = '2.0.0';
 
   let currentId = null;
   let lastNavIndex = 0;
@@ -22,7 +24,7 @@
     return currentId ? A.store.get(currentId) : null;
   }
 
-  /** Lista navegável: ativas; se a atual estiver arquivada, ela é visitável a partir do menu. */
+  /** Lista navegável: só as ativas (arquivadas são abertas pelo menu). */
   function navList() {
     return A.store.active();
   }
@@ -35,14 +37,21 @@
   }
 
   function select(id, direction) {
+    // Uma virada em andamento é concluída antes de trocar.
+    if (A.stage.isFlipping()) {
+      A.stage.settle().then(() => select(id, direction));
+      return;
+    }
     const hg = id ? A.store.get(id) : null;
     if (!hg) {
       const first = navList()[0];
-      if (first && first.id !== id) return select(first.id, direction);
+      if (first && first.id !== id) {
+        select(first.id, direction);
+        return;
+      }
       currentId = null;
       A.storage.ui.set('lastId', null);
       A.stage.showIntro();
-      A.stage.updatePager([], null);
       A.panels.refresh();
       return;
     }
@@ -53,7 +62,6 @@
     A.storage.ui.set('lastId', hg.id);
     if (!changed && A.stage.mode() === 'normal') A.stage.refreshSubject(hg);
     else A.stage.show(hg, direction || 0);
-    A.stage.updatePager(navList(), hg);
     A.panels.refresh();
   }
 
@@ -89,21 +97,19 @@
         select(ev.id, 1);
         return;
       }
-      A.stage.updatePager([], null);
       A.panels.refresh();
       return;
     }
-    if (reason === 'update' || reason === 'external' || reason === 'replace') A.stage.refreshSubject(hg);
-    A.stage.updatePager(navList(), hg);
+    const refreshReasons = ['update', 'external', 'replace', 'restart'];
+    if (refreshReasons.includes(reason) && !A.stage.isFlipping()) A.stage.refreshSubject(hg);
+    else A.stage.updateDock(hg);
     A.panels.refresh();
   }
 
   function afterImport() {
     const hg = current();
-    if (hg) {
-      A.stage.refreshSubject(hg);
-      A.stage.updatePager(navList(), hg);
-    } else {
+    if (hg) A.stage.refreshSubject(hg);
+    else {
       const first = navList()[0];
       select(first ? first.id : null, 1);
     }
@@ -118,10 +124,90 @@
     }
     try {
       A.backup.exportAll();
-      A.dialogs.toast(count === 1 ? '1 ampulheta exportada.' : count + ' ampulhetas exportadas.');
+      A.dialogs.toast('Backup exportado (' + (count === 1 ? '1 ampulheta' : count + ' ampulhetas') + ').');
     } catch (err) {
-      console.error(err);
-      A.dialogs.toast('Não foi possível exportar.', { tone: 'error' });
+      console.error('[Ampulheta]', err);
+      A.dialogs.toast('Não foi possível exportar o backup.', { tone: 'error' });
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Ações sobre a ampulheta atual                                        */
+  /* ------------------------------------------------------------------ */
+
+  async function confirmRestart(hg) {
+    const s = A.time.computeState(hg);
+    // Terminada: reiniciar não perde nada — sem pergunta.
+    if (s.status === 'finished') return true;
+    return A.dialogs.confirm({
+      title: 'Reiniciar “' + hg.name + '”?',
+      text: 'Ela recomeça agora, com a mesma duração: ' + F.formatDurationParts(hg.duration, 3) + '.',
+      confirmLabel: 'Reiniciar'
+    });
+  }
+
+  async function runAction(action) {
+    const hg = current();
+    if (!hg) return;
+    try {
+      switch (action) {
+        case 'info':
+          A.panels.openInfo();
+          break;
+        case 'edit':
+          await A.stage.settle();
+          A.form.openEdit(current());
+          break;
+        case 'restart': {
+          if (A.stage.isFlipping()) return;
+          if (!(await confirmRestart(hg))) return;
+          A.panels.closeAll();
+          const record = await A.stage.restart(hg);
+          if (record) A.dialogs.toast('Ampulheta reiniciada.');
+          break;
+        }
+        case 'duplicate': {
+          await A.stage.settle();
+          const copy = await A.store.duplicate(hg.id);
+          select(copy.id, 1);
+          A.dialogs.toast('Ampulheta duplicada.');
+          break;
+        }
+        case 'archive': {
+          await A.stage.settle();
+          if (hg.archived) {
+            await A.store.setArchived(hg.id, false);
+            A.dialogs.toast('Ampulheta desarquivada.');
+          } else {
+            const neighbor = neighborOf(hg.id);
+            await A.store.setArchived(hg.id, true);
+            A.panels.closeAll();
+            A.dialogs.toast('Ampulheta arquivada.');
+            select(neighbor && neighbor.id !== hg.id ? neighbor.id : null, 1);
+          }
+          break;
+        }
+        case 'delete': {
+          const ok = await A.dialogs.confirm({
+            title: 'Excluir “' + hg.name + '”?',
+            text: 'Ela será apagada deste navegador. Não é possível desfazer, a não ser por um backup.',
+            confirmLabel: 'Excluir',
+            danger: true
+          });
+          if (!ok) return;
+          await A.stage.settle();
+          A.panels.closeAll();
+          // A interface segue sozinha para a vizinha (ou para o primeiro uso).
+          await A.store.remove(hg.id);
+          A.dialogs.toast('Ampulheta excluída.');
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error('[Ampulheta]', err);
+      A.dialogs.toast('Não foi possível concluir a ação. Tente novamente.', { tone: 'error' });
     }
   }
 
@@ -135,17 +221,11 @@
 
   function applySettings() {
     const s = A.storage.settings.all();
-    document.body.classList.toggle('reduce-motion', reducedMotionActive());
-    document.body.classList.toggle('hide-label', !s.showLabel);
-    A.stage.setReducedMotion(reducedMotionActive());
+    const reduced = reducedMotionActive();
+    document.body.classList.toggle('reduce-motion', reduced);
+    document.body.classList.toggle('hide-name', !s.showLabel);
+    A.stage.setReducedMotion(reduced);
     if (A.sound.isEnabled() !== s.sound) A.sound.setEnabled(s.sound);
-  }
-
-  function toggleSound() {
-    const next = !A.storage.settings.get('sound');
-    A.storage.settings.set('sound', next);
-    A.sound.setEnabled(next);
-    A.dialogs.toast(next ? 'Som dos grãos ligado.' : 'Som desligado.');
   }
 
   /* ------------------------------------------------------------------ */
@@ -161,10 +241,16 @@
     let handled = true;
     switch (key) {
       case 'ArrowLeft':
-        if (!intro) step(-1);
+        if (intro) handled = false;
+        else step(-1);
         break;
       case 'ArrowRight':
-        if (!intro) step(1);
+        if (intro) handled = false;
+        else step(1);
+        break;
+      case 'l':
+      case 'L':
+        if (!intro) A.panels.openPicker();
         break;
       case 'c':
       case 'C':
@@ -186,10 +272,6 @@
       case 'N':
         A.form.openCreate();
         break;
-      case 's':
-      case 'S':
-        toggleSound();
-        break;
       case '?':
         A.settingsUI.openHelp();
         break;
@@ -205,11 +287,11 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Granulação de fundo (gerada localmente)                              */
+  /* Granulação de fundo (gerada localmente, uma única vez)               */
   /* ------------------------------------------------------------------ */
 
   function paintFilmGrain() {
-    const target = document.querySelector('.stage__grain');
+    const target = document.querySelector('.stage__backdrop');
     if (!target) return;
     try {
       const size = 160;
@@ -223,10 +305,10 @@
         img.data[i * 4] = v;
         img.data[i * 4 + 1] = v;
         img.data[i * 4 + 2] = v;
-        img.data[i * 4 + 3] = Math.random() < 0.5 ? 60 : 0;
+        img.data[i * 4 + 3] = Math.random() < 0.5 ? 255 : 0;
       }
       ctx.putImageData(img, 0, 0);
-      target.style.backgroundImage = 'url(' + c.toDataURL('image/png') + ')';
+      target.style.setProperty('--grain', 'url(' + c.toDataURL('image/png') + ')');
     } catch (e) {
       /* sem granulação */
     }
@@ -239,7 +321,11 @@
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     if (!/^https?:$/.test(location.protocol)) return;
-    const register = () => navigator.serviceWorker.register('./sw.js').catch(() => {});
+    const register = () =>
+      navigator.serviceWorker
+        .register('./sw.js', { updateViaCache: 'none' })
+        .then((reg) => reg.update && reg.update().catch(() => {}))
+        .catch(() => {});
     if (document.readyState === 'complete') register();
     else root.addEventListener('load', register, { once: true });
   }
@@ -256,11 +342,26 @@
       await A.store.load();
     } catch (err) {
       console.error('[Ampulheta] Falha ao carregar os dados.', err);
-      A.dialogs.toast('Não foi possível ler os dados salvos neste navegador.', { tone: 'error' });
+      A.dialogs.toast('Não foi possível ler as ampulhetas salvas neste navegador. Recarregue a página.', {
+        tone: 'error',
+        duration: 7000
+      });
     }
-    if (A.storage.getAdapter() && A.storage.getAdapter().kind === 'memory') {
-      A.dialogs.toast('Armazenamento indisponível: as ampulhetas não serão guardadas.', { tone: 'error', duration: 6000 });
+    const adapter = A.storage.getAdapter();
+    if (adapter && adapter.kind === 'memory') {
+      A.dialogs.toast('O navegador bloqueou o armazenamento local: as ampulhetas não serão guardadas depois que a página for fechada.', {
+        tone: 'error',
+        duration: 8000
+      });
+    } else if (adapter && adapter.kind === 'localstorage') {
+      A.dialogs.toast('Usando um modo alternativo de armazenamento neste navegador.', { duration: 4000 });
     }
+    A.storage.on('versionchange', () => {
+      A.dialogs.toast('A Ampulheta foi atualizada em outra aba. Recarregue esta página para continuar salvando.', {
+        tone: 'error',
+        duration: 10000
+      });
+    });
 
     applySettings();
     A.storage.settings.on('change', applySettings);
@@ -274,7 +375,9 @@
 
     // Controles
     document.getElementById('btn-menu').addEventListener('click', () => A.panels.openMenu());
+    document.getElementById('btn-new').addEventListener('click', () => A.form.openCreate());
     document.getElementById('btn-info').addEventListener('click', () => A.panels.openInfo());
+    document.getElementById('btn-actions').addEventListener('click', (ev) => A.panels.openActions(ev.currentTarget));
     document.getElementById('intro-create').addEventListener('click', () => A.form.openCreate());
     document.getElementById('intro-import').addEventListener('click', () => A.settingsUI.openImport());
     document.addEventListener('keydown', onKeyDown);
@@ -289,17 +392,12 @@
     const first = A.store.active()[0];
     select(lastHg ? lastHg.id : first ? first.id : null, 0);
 
-    // Entrada suave.
-    document.body.classList.add('is-arriving');
-    requestAnimationFrame(() => {
-      setTimeout(() => document.body.classList.remove('is-booting'), 80);
-      setTimeout(() => document.body.classList.remove('is-arriving'), 2800);
-    });
+    requestAnimationFrame(() => document.body.classList.remove('is-booting'));
 
     registerServiceWorker();
   }
 
-  A.app = { current, select, step, neighborOf, exportData, afterImport, applySettings };
+  A.app = { current, select, step, neighborOf, runAction, exportData, afterImport, applySettings };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', main);
   else main();

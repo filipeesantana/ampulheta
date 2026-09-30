@@ -1,19 +1,20 @@
 /*
  * Ampulheta — ui-stage.js
- * O palco: canvas da ampulheta, legenda, paginação, setas, gesto de
- * deslizar, transições entre ampulhetas e modo contemplação.
+ * O palco: a ampulheta, a navegação inferior (nome, setas, posição, estado),
+ * o gesto de deslizar, as transições entre ampulhetas, o reinício com virada
+ * e o modo contemplação.
  */
 (function (root) {
   'use strict';
 
   const A = root.Ampulheta;
-  const { el, qs, clear, icon, wait, clamp } = A.utils;
+  const { qs, wait } = A.utils;
   const T = A.time;
   const F = A.format;
 
   let scene;
-  let canvas;
-  let wrap;
+  let flip;
+  let host;
   let E = {};
   let mode = 'normal'; // 'intro' | 'normal'
   let contemplating = false;
@@ -22,22 +23,25 @@
   let wakeLock = null;
   let enteredFullscreen = false;
   let resizeRaf = 0;
+  let lastAria = '';
 
   function init() {
-    canvas = qs('#hourglass');
-    wrap = qs('#glass-wrap');
+    host = qs('#glass-wrap');
     E = {
-      caption: qs('#caption'),
-      name: qs('#caption-name'),
-      status: qs('#caption-status'),
-      pager: qs('#pager'),
+      dock: qs('#dock'),
+      status: qs('#dock-status'),
+      statusText: qs('#dock-status-text'),
+      restart: qs('#dock-restart'),
+      name: qs('#current-name'),
+      picker: qs('#btn-picker'),
+      position: qs('#dock-position'),
       prev: qs('#btn-prev'),
       next: qs('#btn-next'),
       contemplate: qs('#btn-contemplate'),
-      intro: qs('#intro'),
-      introText: qs('#intro-text')
+      intro: qs('#intro')
     };
-    scene = A.scene.createScene(canvas);
+    scene = A.scene.createScene(host);
+    flip = A.flip.createFlip(scene);
 
     scene.on('status', onStatus);
     scene.on('landed', (ev) => {
@@ -50,7 +54,8 @@
 
     E.prev.addEventListener('click', () => A.app.step(-1));
     E.next.addEventListener('click', () => A.app.step(1));
-    E.name.addEventListener('click', () => A.panels.openInfo());
+    E.picker.addEventListener('click', () => A.panels.openPicker(E.picker));
+    E.restart.addEventListener('click', () => A.app.runAction('restart'));
     E.contemplate.addEventListener('click', () => toggleContemplation());
 
     setupSwipe();
@@ -58,13 +63,14 @@
 
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleResize) : null;
     if (ro) ro.observe(qs('#stage'));
+    // Também cobre mudanças de densidade de pixels (ex.: janela levada a outro monitor).
     root.addEventListener('resize', scheduleResize);
-    root.addEventListener('orientationchange', scheduleResize);
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && contemplating) requestWakeLock();
-      if (!document.hidden) updateAria();
+      if (document.hidden) return;
+      if (contemplating) requestWakeLock();
+      updateAria();
     });
     applyLayout();
   }
@@ -74,29 +80,30 @@
   /* ------------------------------------------------------------------ */
 
   function insetsFor(w, h) {
-    const small = w <= 480;
-    const low = h <= 520;
+    const small = w <= 600;
+    const low = h <= 620;
     if (contemplating) {
-      const m = Math.max(18, Math.round(h * 0.035));
-      return { top: m, bottom: m, side: small ? 12 : 40 };
+      const m = Math.max(20, Math.round(h * 0.04));
+      return { top: m, bottom: m + 36, side: small ? 12 : 40 };
     }
     if (mode === 'intro') {
-      if (low) return { top: 40, bottom: 110, side: 16 };
+      if (h <= 460) return { top: 48, bottom: 150, side: 16 };
       return {
-        top: small ? 64 : Math.max(70, Math.round(h * 0.075)),
-        bottom: small ? clamp(Math.round(h * 0.3), 200, 250) : clamp(Math.round(h * 0.27), 210, 270),
+        top: small ? 60 : Math.max(64, Math.round(h * 0.07)),
+        bottom: low ? 190 : small ? 230 : 250,
         side: 16
       };
     }
-    if (low) return { top: 44, bottom: 56, side: small ? 12 : 64 };
-    return {
-      top: small ? 58 : 72,
-      bottom: small ? 84 : 104,
-      side: small ? 12 : 72
-    };
+    if (h <= 460) return { top: 52, bottom: 60, side: small ? 12 : 48 };
+    if (low) return { top: 56, bottom: 100, side: small ? 12 : 48 };
+    return { top: small ? 60 : 68, bottom: small ? 122 : 132, side: small ? 12 : 48 };
   }
 
   function applyLayout() {
+    if (flip && flip.isRunning()) {
+      flip.settle().then(applyLayout);
+      return;
+    }
     const stage = qs('#stage');
     const w = stage.clientWidth;
     const h = stage.clientHeight;
@@ -116,66 +123,66 @@
     const before = scene.layout();
     applyLayout();
     const after = scene.layout();
-    if (!before || !after || document.body.classList.contains('reduce-motion')) return;
+    if (!before || !after || reducedMotion()) return;
     const k = before.S / after.S;
     const dx = before.cx - after.cx;
     const dy = before.cy - after.cy;
-    wrap.classList.remove('is-scaling');
-    wrap.style.transformOrigin = after.cx + 'px ' + after.cy + 'px';
-    wrap.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + k + ')';
-    void wrap.offsetWidth;
+    if (Math.abs(k - 1) < 0.001 && Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    host.classList.remove('is-scaling');
+    host.style.transformOrigin = after.cx + 'px ' + after.cy + 'px';
+    host.style.transform = 'translate3d(' + dx + 'px,' + dy + 'px,0) scale(' + k + ')';
     requestAnimationFrame(() => {
-      wrap.classList.add('is-scaling');
-      wrap.style.transform = '';
-      setTimeout(() => wrap.classList.remove('is-scaling'), 950);
+      host.classList.add('is-scaling');
+      host.style.transform = '';
+      setTimeout(() => host.classList.remove('is-scaling'), 750);
     });
+  }
+
+  function reducedMotion() {
+    return document.body.classList.contains('reduce-motion');
   }
 
   /* ------------------------------------------------------------------ */
   /* Assunto (ampulheta exibida)                                          */
   /* ------------------------------------------------------------------ */
 
-  function reducedMotion() {
-    return document.body.classList.contains('reduce-motion');
-  }
-
   /** Exibe uma ampulheta. direction: −1, 0 ou 1 (sentido da transição). */
-  async function show(hourglass, direction, options) {
-    const opts = options || {};
+  async function show(hourglass, direction) {
     const seq = ++switchSeq;
     const previous = scene.getSubject();
-    const animate = !opts.instant && previous && previous.id !== hourglass.id;
-    if (!animate) wrap.classList.remove('is-leaving', 'is-entering');
+    const animate = !!previous && previous.id !== hourglass.id;
+    if (!animate) host.classList.remove('is-leaving', 'is-entering');
     if (animate) {
-      const shift = reducedMotion() ? 0 : (direction || 0) * 22;
-      wrap.style.setProperty('--shift', shift + 'px');
-      wrap.classList.add('is-leaving');
-      E.caption.style.opacity = '0';
-      await wait(reducedMotion() ? 120 : 250);
+      const shift = reducedMotion() ? 0 : (direction || 0) * 14;
+      host.style.setProperty('--shift', shift + 'px');
+      host.classList.remove('is-entering');
+      host.classList.add('is-leaving');
+      E.name.style.opacity = '0';
+      await wait(reducedMotion() ? 60 : 130);
       if (seq !== switchSeq) return;
     }
     setMode('normal');
     scene.setSubject(hourglass);
-    updateCaption(hourglass, false);
+    updateDock(hourglass);
     updateAria();
     if (animate) {
-      wrap.classList.remove('is-leaving');
-      wrap.classList.add('is-entering');
-      void wrap.offsetWidth;
+      host.classList.remove('is-leaving');
+      host.classList.add('is-entering');
+      void host.offsetWidth; // aplica o estado inicial antes de animar
       requestAnimationFrame(() => {
         if (seq !== switchSeq) return;
-        wrap.classList.remove('is-entering');
-        E.caption.style.opacity = '';
+        host.classList.remove('is-entering');
+        E.name.style.opacity = '';
       });
     } else {
-      E.caption.style.opacity = '';
+      E.name.style.opacity = '';
     }
   }
 
   /** Atualiza a ampulheta atual sem transição (ex.: após edição). */
   function refreshSubject(hourglass) {
     scene.setSubject(hourglass);
-    updateCaption(hourglass, false);
+    updateDock(hourglass);
     updateAria();
   }
 
@@ -184,18 +191,15 @@
     return { id: '__hoje__', name: 'Hoje', start, end: T.addDays(start, 1), tone: 'areia' };
   }
 
-  /** Tela de primeiro uso, com a ampulheta de hoje (não é salva). */
+  /** Primeiro uso: a ampulheta de hoje (não é salva) e um único botão. */
   function showIntro() {
     ++switchSeq;
-    wrap.classList.remove('is-leaving', 'is-entering');
-    E.caption.style.opacity = '';
-    const hoje = todayHourglass();
+    host.classList.remove('is-leaving', 'is-entering');
+    E.name.style.opacity = '';
     setMode('intro');
+    const hoje = todayHourglass();
     scene.setSubject(hoje);
-    const model = A.grains.createModel(hoje);
-    E.introText.textContent =
-      'Esta é a ampulheta de hoje. Cada grão que cai equivale a cerca de ' + F.formatDuration(model.grainMs, 1) + '.';
-    canvas.setAttribute('aria-label', 'Ampulheta de hoje: ' + F.formatPercent(T.computeState(hoje).progress) + ' do dia já passou.');
+    host.setAttribute('aria-label', 'Ampulheta de hoje: ' + F.formatPercentShort(T.computeState(hoje).progress) + ' do dia já passou.');
   }
 
   function setMode(next) {
@@ -216,39 +220,46 @@
     }
     const current = A.app.current();
     if (!current || current.id !== subject.id) return;
-    // Transição ao vivo (ex.: terminou agora): o texto aparece devagar.
-    const live = ev.prev != null;
-    updateCaption(current, live);
+    updateDock(current);
     updateAria();
-    if (live) A.panels.refresh();
+    if (ev.prev != null) A.panels.refresh();
   }
 
-  function captionStatus(hg) {
+  /* ------------------------------------------------------------------ */
+  /* Navegação inferior                                                   */
+  /* ------------------------------------------------------------------ */
+
+  function statusFor(hg) {
     const s = T.computeState(hg);
-    if (s.status === 'finished') return 'Terminou.';
-    if (s.status === 'pending') return 'Começa em ' + F.formatDateLong(hg.start) + '.';
-    if (hg.archived) return 'Arquivada.';
-    return '';
+    if (s.status === 'finished') return { text: 'Terminou.', restart: true };
+    if (s.status === 'pending') return { text: 'Começa em ' + F.formatDateLong(hg.start) + '.', restart: false };
+    if (hg.archived) return { text: 'Arquivada.', restart: false };
+    return null;
   }
 
-  function updateCaption(hg, live) {
-    E.name.textContent = hg.name;
-    E.name.setAttribute('aria-label', hg.name + ' — ver detalhes');
-    E.name.title = 'Ver detalhes (I)';
-    const text = captionStatus(hg);
-    const node = E.status;
-    if (node.textContent !== text) {
-      node.classList.remove('is-visible');
-      node.textContent = text;
-      if (text) {
-        if (live) {
-          setTimeout(() => node.classList.add('is-visible'), 900);
-        } else {
-          void node.offsetWidth;
-          node.classList.add('is-visible');
-        }
+  function updateDock(hg) {
+    if (!hg) return;
+    if (E.name.textContent !== hg.name) E.name.textContent = hg.name;
+    E.picker.setAttribute('aria-label', 'Ampulheta atual: ' + hg.name + '. Escolher outra');
+
+    const list = A.store.active();
+    const idx = list.findIndex((h) => h.id === hg.id);
+    const multi = list.length > 1 || (hg.archived && list.length > 0);
+    E.prev.disabled = !multi;
+    E.next.disabled = !multi;
+    const pos = idx >= 0 && list.length > 1 ? idx + 1 + ' / ' + list.length : '';
+    if (E.position.textContent !== pos) E.position.textContent = pos;
+
+    const st = statusFor(hg);
+    if (!st) {
+      E.status.hidden = true;
+    } else {
+      if (E.statusText.textContent !== st.text || E.status.hidden) {
+        E.statusText.textContent = st.text;
+        E.status.hidden = false;
       }
-    } else if (text) node.classList.add('is-visible');
+      E.restart.hidden = !st.restart;
+    }
   }
 
   function updateAria() {
@@ -257,54 +268,36 @@
     const s = T.computeState(hg);
     let text = hg.name + ': ';
     if (s.status === 'pending') text += 'ainda não começou; começa em ' + F.formatDateTime(hg.start) + '.';
-    else if (s.status === 'finished') text += 'concluída em ' + F.formatDateTime(hg.end) + '.';
-    else text += F.formatPercent(s.progress, { minDecimals: 0 }) + ' transcorrido; termina em ' + F.formatDateTime(hg.end) + '.';
-    canvas.setAttribute('aria-label', text);
+    else if (s.status === 'finished') text += 'terminou em ' + F.formatDateTime(hg.end) + '.';
+    else text += F.formatPercentShort(s.progress) + ' do tempo já passou; termina em ' + F.formatDateTime(hg.end) + '.';
+    if (text !== lastAria) {
+      host.setAttribute('aria-label', text);
+      lastAria = text;
+    }
   }
 
   /* ------------------------------------------------------------------ */
-  /* Paginação                                                            */
+  /* Reinício com virada                                                  */
   /* ------------------------------------------------------------------ */
 
-  function updatePager(list, current) {
-    clear(E.pager);
-    const idx = current ? list.findIndex((h) => h.id === current.id) : -1;
-    const multi = list.length > 1 || (current && current.archived && list.length > 0);
-    E.prev.classList.toggle('is-hidden', !multi);
-    E.next.classList.toggle('is-hidden', !multi);
-    E.prev.disabled = !multi;
-    E.next.disabled = !multi;
-    if (list.length <= 1) {
-      E.pager.hidden = true;
-      return;
+  /** Vira a ampulheta e grava o reinício (mesma duração, começando agora). */
+  async function restart(hourglass) {
+    if (!hourglass || flip.isRunning()) return null;
+    if (contemplating) showControlsBriefly();
+    const record = await flip.run(hourglass, {
+      reducedMotion: reducedMotion(),
+      commit: () => A.store.restart(hourglass.id)
+    });
+    const current = A.app.current();
+    if (current && record && current.id === record.id) {
+      updateDock(record);
+      updateAria();
     }
-    E.pager.hidden = false;
-    if (list.length <= 12) {
-      list.forEach((hg, i) => {
-        E.pager.appendChild(
-          el('button', {
-            class: 'pager__dot',
-            attrs: {
-              type: 'button',
-              'aria-label': hg.name + ' (' + (i + 1) + ' de ' + list.length + ')',
-              'aria-current': i === idx ? 'true' : 'false',
-              title: hg.name
-            },
-            on: { click: () => A.app.select(hg.id, i > idx ? 1 : -1) }
-          })
-        );
-      });
-    } else {
-      E.pager.appendChild(
-        el('button', { class: 'pager__step', attrs: { type: 'button', 'aria-label': 'Anterior' }, on: { click: () => A.app.step(-1) } }, [icon('prev')])
-      );
-      E.pager.appendChild(
-        el('span', { class: 'pager__count', text: (idx >= 0 ? idx + 1 : '–') + ' / ' + list.length, attrs: { 'aria-live': 'polite' } })
-      );
-      E.pager.appendChild(
-        el('button', { class: 'pager__step', attrs: { type: 'button', 'aria-label': 'Próxima' }, on: { click: () => A.app.step(1) } }, [icon('next')])
-      );
-    }
+    return record;
+  }
+
+  function settle() {
+    return flip ? flip.settle() : Promise.resolve(null);
   }
 
   /* ------------------------------------------------------------------ */
@@ -317,19 +310,20 @@
     stage.addEventListener(
       'pointerdown',
       (ev) => {
-        if (ev.pointerType === 'mouse') return;
-        start = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+        if (ev.pointerType === 'mouse' || !ev.isPrimary) return;
+        start = { x: ev.clientX, y: ev.clientY, t: performance.now(), id: ev.pointerId };
       },
       { passive: true }
     );
     const end = (ev) => {
-      if (!start) return;
+      if (!start || ev.pointerId !== start.id) return;
       const dx = ev.clientX - start.x;
       const dy = ev.clientY - start.y;
       const dt = performance.now() - start.t;
       start = null;
-      if (mode !== 'normal' || dt > 800) return;
-      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) A.app.step(dx < 0 ? 1 : -1);
+      if (mode !== 'normal' || dt > 700 || A.dialogs.anyOpen()) return;
+      // Horizontal, decidido e longe o bastante — não confunde com rolagem ou toque.
+      if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.6) A.app.step(dx < 0 ? 1 : -1);
     };
     stage.addEventListener('pointerup', end, { passive: true });
     stage.addEventListener('pointercancel', () => (start = null), { passive: true });
@@ -345,27 +339,33 @@
     document.body.classList.remove('is-idle');
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
+      if (A.dialogs.anyOpen()) return;
       document.body.classList.remove('show-controls');
       document.body.classList.add('is-idle');
-    }, 2600);
+    }, 2800);
   }
 
   function setupIdle() {
-    const wake = () => showControlsBriefly();
     let lastMove = 0;
     document.addEventListener(
       'pointermove',
       (ev) => {
-        // Ignora micro-movimentos e eventos sintéticos repetidos.
-        if (Math.abs(ev.movementX || 0) + Math.abs(ev.movementY || 0) < 2 && ev.pointerType === 'mouse') return;
+        if (!contemplating) return;
+        if (ev.pointerType === 'mouse' && Math.abs(ev.movementX || 0) + Math.abs(ev.movementY || 0) < 2) return;
         const now = performance.now();
-        if (now - lastMove < 120) return;
+        if (now - lastMove < 150) return;
         lastMove = now;
-        wake();
+        showControlsBriefly();
       },
       { passive: true }
     );
-    document.addEventListener('pointerdown', wake, { passive: true });
+    document.addEventListener(
+      'pointerdown',
+      () => {
+        if (contemplating) showControlsBriefly();
+      },
+      { passive: true }
+    );
   }
 
   function canFullscreen() {
@@ -424,13 +424,19 @@
     }
   }
 
+  function setContemplateButton(on) {
+    E.contemplate.setAttribute('aria-pressed', on ? 'true' : 'false');
+    E.contemplate.setAttribute('aria-label', on ? 'Sair do modo contemplação' : 'Modo contemplação');
+    E.contemplate.title = on ? 'Sair do modo contemplação (C ou Esc)' : 'Modo contemplação (C)';
+    E.contemplate.querySelector('use').setAttribute('href', on ? '#i-focus-exit' : '#i-focus');
+  }
+
   function enterContemplation() {
     if (contemplating || mode === 'intro') return;
     contemplating = true;
+    A.panels.closeAll();
     document.body.classList.add('is-contemplating');
-    E.contemplate.setAttribute('aria-pressed', 'true');
-    E.contemplate.setAttribute('aria-label', 'Sair do modo contemplação');
-    E.contemplate.querySelector('use').setAttribute('href', '#i-focus-exit');
+    setContemplateButton(true);
     relayoutAnimated();
     if (A.storage.settings.get('contemplationFullscreen') && canFullscreen() && !isFullscreen()) {
       enteredFullscreen = requestFullscreen();
@@ -444,9 +450,7 @@
     contemplating = false;
     clearTimeout(idleTimer);
     document.body.classList.remove('is-contemplating', 'show-controls', 'is-idle');
-    E.contemplate.setAttribute('aria-pressed', 'false');
-    E.contemplate.setAttribute('aria-label', 'Modo contemplação');
-    E.contemplate.querySelector('use').setAttribute('href', '#i-focus');
+    setContemplateButton(false);
     relayoutAnimated();
     if (enteredFullscreen && isFullscreen()) exitFullscreen();
     enteredFullscreen = false;
@@ -467,9 +471,13 @@
   }
 
   function onDialogChange(open) {
-    // Diálogos abertos: a contemplação não esconde nada.
-    if (open && contemplating) document.body.classList.add('show-controls');
-    else if (!open && contemplating) showControlsBriefly();
+    // Com um diálogo aberto, a contemplação não esconde nada.
+    if (!contemplating) return;
+    if (open) {
+      clearTimeout(idleTimer);
+      document.body.classList.add('show-controls');
+      document.body.classList.remove('is-idle');
+    } else showControlsBriefly();
   }
 
   function setReducedMotion(value) {
@@ -481,8 +489,10 @@
     show,
     showIntro,
     refreshSubject,
-    updatePager,
-    updateCaption,
+    updateDock,
+    restart,
+    settle,
+    isFlipping: () => !!(flip && flip.isRunning()),
     toggleContemplation,
     exitContemplation,
     toggleFullscreen,

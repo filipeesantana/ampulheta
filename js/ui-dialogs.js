@@ -1,7 +1,7 @@
 /*
  * Ampulheta — ui-dialogs.js
- * Abertura/fechamento animados de <dialog>, confirmação própria e avisos.
- * Nada de alert()/confirm() do navegador.
+ * Abertura/fechamento animados de <dialog> (painéis, modais e popovers
+ * ancorados), confirmação própria e avisos. Nada de alert()/confirm().
  */
 (function (root) {
   'use strict';
@@ -9,7 +9,7 @@
   const A = root.Ampulheta;
   const { el, qs } = A.utils;
 
-  const CLOSE_MS = 440;
+  const CLOSE_MS = 260;
   const state = new WeakMap();
   const openStack = [];
 
@@ -68,6 +68,7 @@
     }
     if (!openStack.includes(dialog)) openStack.push(dialog);
     document.body.classList.add('dialog-open');
+    if (opts.anchor) positionPopover(dialog, opts.anchor, opts.placement || 'above');
     // Força o estado inicial antes de animar.
     void dialog.offsetWidth;
     requestAnimationFrame(() => dialog.classList.add('is-open'));
@@ -82,6 +83,37 @@
       }, 30);
     }
     if (A.stage && A.stage.onDialogChange) A.stage.onDialogChange(true);
+  }
+
+  /**
+   * Posiciona um popover junto ao botão que o abriu (no celular, o CSS o
+   * transforma em folha inferior e ignora estas coordenadas).
+   * placement: 'above' (centralizado acima) | 'below-end' (abaixo, alinhado à direita).
+   */
+  function positionPopover(dialog, anchor, placement) {
+    const margin = 12;
+    const r = anchor.getBoundingClientRect();
+    const w = dialog.offsetWidth;
+    const h = dialog.offsetHeight;
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    let left;
+    let top;
+    if (placement === 'below-end') {
+      left = r.right - w;
+      top = r.bottom + 8;
+      dialog.style.setProperty('--origin', '100% 0');
+      if (top + h > vh - margin) top = Math.max(margin, r.top - h - 8);
+    } else {
+      left = r.left + r.width / 2 - w / 2;
+      top = r.top - h - 8;
+      dialog.style.setProperty('--origin', '50% 100%');
+      if (top < margin) top = Math.min(vh - h - margin, r.bottom + 8);
+    }
+    left = Math.max(margin, Math.min(vw - w - margin, left));
+    top = Math.max(margin, top);
+    dialog.style.left = Math.round(left) + 'px';
+    dialog.style.top = Math.round(top) + 'px';
   }
 
   /** Limpeza comum a qualquer fechamento (inclusive o forçado pelo navegador). */
@@ -142,6 +174,7 @@
     const text = qs('#confirm-text');
     const ok = qs('#confirm-ok');
     const cancel = qs('#confirm-cancel');
+    if (dialog.open) return Promise.resolve(false);
     title.textContent = options.title || 'Confirmar';
     text.textContent = options.text || '';
     ok.textContent = options.confirmLabel || 'Confirmar';
@@ -208,6 +241,15 @@
       }, 520);
     }, duration);
   }
+
+  // Popovers ancorados não acompanham redimensionamentos: fecham.
+  // (Só mudanças de largura: o teclado virtual do celular altera apenas a altura.)
+  let lastWidth = root.innerWidth;
+  root.addEventListener('resize', () => {
+    if (root.innerWidth === lastWidth) return;
+    lastWidth = root.innerWidth;
+    openStack.filter((d) => d.classList.contains('popover')).forEach((d) => close(d));
+  });
 
   A.dialogs = { open, close, isOpen, anyOpen, confirm: confirmAction, toast };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

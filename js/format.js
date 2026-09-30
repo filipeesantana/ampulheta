@@ -65,6 +65,28 @@
     return text + '%';
   }
 
+  /**
+   * Percentual "humano": 1 casa decimal no dia a dia (47,2%) e, perto de 0% ou
+   * de 100%, apenas as casas necessárias para 2 algarismos significativos
+   * (0,0000041%). Truncado: nunca mostra 100% antes do fim.
+   */
+  function formatPercentHuman(fraction) {
+    const pct = Math.max(0, Math.min(100, fraction * 100));
+    if (pct === 0) return '0%';
+    if (pct === 100) return '100%';
+    const smallest = Math.min(pct, 100 - pct);
+    const decimals = Math.min(10, Math.max(1, 1 - Math.floor(Math.log10(smallest))));
+    return formatFixedTruncated(pct, decimals) + '%';
+  }
+
+  /** Percentual curto para listas: inteiro, exceto quando menor que 1%. */
+  function formatPercentShort(fraction) {
+    const pct = Math.max(0, Math.min(100, fraction * 100));
+    if (pct >= 1 && pct < 100) return formatInteger(Math.floor(pct)) + '%';
+    if (pct > 0 && pct < 1) return 'menos de 1%';
+    return formatPercentHuman(fraction);
+  }
+
   function plural(n, unit) {
     return formatInteger(n) + ' ' + (n === 1 ? unit.one : unit.many);
   }
@@ -177,7 +199,26 @@
     return dur < T.DAY || new Date(hourglass.start).getSeconds() !== 0 || new Date(hourglass.end).getSeconds() !== 0;
   }
 
+  /** Frase curta de estado, usada em listas e na navegação. */
+  function describeStatus(hourglass, at) {
+    const now = typeof at === 'number' ? at : T.now();
+    const s = T.computeState(hourglass, now);
+    if (s.status === 'pending') return { status: s.status, text: 'Começa em ' + formatSpan(now, hourglass.start, 1) };
+    if (s.status === 'finished') return { status: s.status, text: 'Terminou' };
+    if (s.elapsed < T.MINUTE) return { status: s.status, text: 'Começou agora' };
+    return { status: s.status, text: 'Em andamento · ' + formatPercentShort(s.progress) };
+  }
+
+  /** Duração canônica em texto: {minutes: 30} → "30 minutos". */
+  function formatDurationParts(parts, maxUnits) {
+    return describeParts(parts || {}, maxUnits || 6) || '0 segundos';
+  }
+
   A.format = {
+    formatPercentHuman,
+    formatPercentShort,
+    describeStatus,
+    formatDurationParts,
     formatInteger,
     formatFixedTruncated,
     formatPercent,

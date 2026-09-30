@@ -1,28 +1,28 @@
 /* ==========================================================================
    Ampulheta — hourglass.css
-   Cenário: luz difusa, vinheta, granulação e transições entre ampulhetas.
+   Cenário (luz, vinheta, granulação), camadas da ampulheta e transições.
+   Tudo aqui é estático ou animado apenas com transform/opacity.
    ========================================================================== */
 
-/* Luz: uma poça tênue atrás do vidro e um foco muito suave vindo de cima. */
-.stage__light {
+/* Luz: uma poça tênue atrás do vidro, um foco suave vindo de cima e vinheta.
+   A granulação fica ATRÁS da ampulheta e sem blend-mode (não recompõe a tela a cada quadro). */
+.stage__backdrop {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 34% 46% at 50% 47%, rgba(255, 240, 220, 0.05), rgba(255, 240, 220, 0) 72%),
-    radial-gradient(ellipse 26% 38% at 50% -6%, rgba(255, 244, 228, 0.045), rgba(255, 244, 228, 0) 80%),
-    radial-gradient(ellipse 120% 90% at 50% 50%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.62) 100%);
+    radial-gradient(ellipse 34% 46% at 50% 46%, rgba(255, 240, 220, 0.05), rgba(255, 240, 220, 0) 72%),
+    radial-gradient(ellipse 28% 40% at 50% -6%, rgba(255, 244, 228, 0.04), rgba(255, 244, 228, 0) 80%),
+    radial-gradient(ellipse 120% 95% at 50% 50%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.5) 100%);
 }
 
-/* Granulação de película (textura gerada em tempo de execução). */
-.stage__grain {
+.stage__backdrop::after {
+  content: "";
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  opacity: 0.06;
-  background-repeat: repeat;
+  opacity: 0.035;
+  background-image: var(--grain, none);
   background-size: 160px 160px;
-  mix-blend-mode: screen;
 }
 
 .stage__glass {
@@ -30,11 +30,16 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  transition: opacity 520ms var(--ease), transform 720ms var(--ease-out), filter 520ms var(--ease);
-  will-change: opacity, transform;
+  transition: opacity 240ms var(--ease), transform 300ms var(--ease-out);
 }
 
-.hourglass-canvas {
+/* Objeto (gira como um todo na virada) e suas camadas. */
+.hg-object {
+  position: absolute;
+  transform-origin: 50% 50%;
+}
+
+.hg-layer {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -42,39 +47,49 @@
   display: block;
 }
 
-/* Entrada da página: a ampulheta emerge devagar do escuro. */
-body.is-booting .stage__glass {
-  opacity: 0;
-  filter: brightness(0.6);
+.hg-object--double {
+  pointer-events: none;
 }
 
-/* Troca entre ampulhetas (direção via --shift). */
+.is-flipping .hg-object {
+  will-change: transform, opacity;
+}
+
+/* Sombra de contato e poça de luz no chão: ficam no chão durante a virada. */
+.hg-shadow {
+  position: absolute;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.36) 42%, rgba(0, 0, 0, 0) 64%),
+    radial-gradient(closest-side, rgba(255, 240, 220, 0.045), rgba(255, 240, 220, 0));
+}
+
+/* Entrada da página: rápida e suave. */
+body.is-booting .stage__glass {
+  opacity: 0;
+}
+
+/* Troca entre ampulhetas: curta — "instantâneo, mas refinado". */
 .stage__glass.is-leaving {
   opacity: 0;
-  transform: translateX(calc(var(--shift, 0px) * -1));
-  transition-duration: 260ms, 260ms, 260ms;
+  transform: translate3d(calc(var(--shift, 0px) * -1), 0, 0);
+  transition-duration: 130ms, 130ms;
   transition-timing-function: var(--ease-in);
 }
 
 .stage__glass.is-entering {
   opacity: 0;
-  transform: translateX(var(--shift, 0px));
+  transform: translate3d(var(--shift, 0px), 0, 0);
   transition: none;
 }
 
-/* Contemplação: um leve avanço da ampulheta (FLIP controlado pelo JS). */
+/* Contemplação: leve avanço (FLIP controlado pelo JS). */
 .stage__glass.is-scaling {
-  transition: transform 900ms var(--ease-out), opacity 520ms var(--ease);
+  transition: transform 700ms var(--ease-out), opacity 240ms var(--ease);
 }
 
 body.reduce-motion .stage__glass,
 body.reduce-motion .stage__glass.is-leaving,
 body.reduce-motion .stage__glass.is-scaling {
   transform: none !important;
-  transition: opacity 200ms linear;
-}
-
-/* Primeira aparição: mais lenta que as trocas. */
-body.is-arriving .stage__glass {
-  transition: opacity 1.8s var(--ease), filter 2.6s var(--ease), transform 720ms var(--ease-out);
 }

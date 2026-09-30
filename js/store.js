@@ -40,15 +40,29 @@
     const out = [];
     const seen = new Set();
     const repairs = [];
+    const staleIds = [];
     for (const r of raw) {
       const res = M.normalize(r);
       if (!res.ok) continue;
       if (seen.has(res.value.id)) continue;
       seen.add(res.value.id);
       out.push(res.value);
-      if (res.idRegenerated) repairs.push(res.value);
+      if (res.idRegenerated) {
+        repairs.push(res.value);
+        if (r && typeof r.id === 'string' && r.id) staleIds.push(r.id);
+      } else if (res.migrated) {
+        repairs.push(res.value);
+      }
     }
-    if (repairs.length) await adapter.putMany(repairs);
+    // Grava de volta registros migrados (ex.: vindos do armazenamento alternativo).
+    if (repairs.length) {
+      try {
+        for (const id of staleIds) await adapter.remove(id);
+        await adapter.putMany(repairs);
+      } catch (e) {
+        console.warn('[Ampulheta] Não foi possível regravar registros migrados.', e);
+      }
+    }
     return out;
   }
 
@@ -105,13 +119,13 @@
     return save(res.value, 'create');
   }
 
-  async function update(id, patch) {
+  async function update(id, patch, reason) {
     const current = get(id);
     if (!current) throw new Error('Ampulheta não encontrada');
     const next = Object.assign({}, current, patch, { id, updatedAt: T.now() });
     const res = M.normalize(next);
     if (!res.ok) throw new Error('Ampulheta inválida: ' + res.reason);
-    return save(res.value, 'update');
+    return save(res.value, reason || 'update');
   }
 
   async function remove(id) {
@@ -125,15 +139,25 @@
     if (!src) throw new Error('Ampulheta não encontrada');
     const suffix = ' (cópia)';
     const base = Array.from(src.name).slice(0, M.NAME_MAX - suffix.length).join('');
-    return create({ name: base + suffix, start: src.start, end: src.end, tone: src.tone });
+    return create({
+      name: base + suffix,
+      start: src.start,
+      end: src.end,
+      mode: src.mode,
+      duration: src.duration,
+      tone: src.tone
+    });
   }
 
-  /** Nova cópia com a mesma duração, começando agora. */
-  async function restart(id) {
+  /**
+   * Reinicia a ampulheta no lugar: começa agora, com a mesma duração canônica.
+   * Nome, tom, ordem e modo são preservados.
+   */
+  async function restart(id, at) {
     const src = get(id);
     if (!src) throw new Error('Ampulheta não encontrada');
-    const start = T.now();
-    return create({ name: src.name, start, end: start + (src.end - src.start), tone: src.tone });
+    const interval = M.restartInterval(src, at);
+    return update(id, interval, 'restart');
   }
 
   async function setArchived(id, value) {

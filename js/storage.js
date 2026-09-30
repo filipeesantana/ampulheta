@@ -7,8 +7,15 @@
  *    certos navegadores), cai para localStorage e, em último caso, memória.
  *  - Preferências: localStorage (pequenas, síncronas), com fallback em memória.
  *
- * Só são gravados instantes (start/end) e configurações. Nenhum grão, nenhum
- * "tick": o estado visual é sempre reconstruído a partir do relógio.
+ * Só são gravados instantes (start/end), a duração canônica e configurações.
+ * Nenhum grão, nenhum "tick": o estado visual é sempre reconstruído a partir
+ * do relógio.
+ *
+ * Versões do banco:
+ *   1 — ampulhetas { id, name, start, end, tone, archived, order, ... }
+ *   2 — mesmos registros com schemaVersion, mode e duration (migração
+ *       automática no upgrade; nada é apagado — registros ilegíveis ficam
+ *       intactos e são apenas ignorados na leitura).
  */
 (function (root) {
   'use strict';
@@ -16,11 +23,12 @@
   const A = root.Ampulheta;
 
   const DB_NAME = 'ampulheta';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = 'hourglasses';
   const LS_KEY = 'ampulheta.hourglasses.v1';
   const SETTINGS_KEY = 'ampulheta.settings.v1';
-  const OPEN_TIMEOUT = 5000;
+  const OPEN_TIMEOUT = 8000;
+  const emitter = A.utils.createEmitter();
 
   /* ------------------------------------------------------------------ */
   /* Adaptador IndexedDB                                                  */
@@ -58,9 +66,14 @@
         reject(err);
         return;
       }
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+        const tx = request.transaction;
+        let store;
+        if (!db.objectStoreNames.contains(STORE)) store = db.createObjectStore(STORE, { keyPath: 'id' });
+        else store = tx.objectStore(STORE);
+        // v1 → v2: acrescenta schemaVersion, mode e duration a cada registro.
+        if (event.oldVersion >= 1 && event.oldVersion < 2) migrateStore(store);
       };
       request.onsuccess = () => {
         clearTimeout(timer);
@@ -70,7 +83,11 @@
           return;
         }
         settled = true;
-        db.onversionchange = () => db.close();
+        // Outra aba abriu uma versão mais nova do banco: libera e avisa.
+        db.onversionchange = () => {
+          db.close();
+          emitter.emit('versionchange');
+        };
         resolve(db);
       };
       request.onerror = () => {
@@ -84,6 +101,24 @@
         /* outra aba com versão antiga aberta; o timeout decide */
       };
     });
+  }
+
+  /** Migra registros dentro da transação de upgrade (cursor), sem apagar nada. */
+  function migrateStore(store) {
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const res = A.model.normalize(cursor.value);
+      if (res.ok && res.migrated && res.value.id === cursor.value.id) {
+        try {
+          cursor.update(res.value);
+        } catch (e) {
+          /* mantém o registro original */
+        }
+      }
+      cursor.continue();
+    };
   }
 
   function createIndexedDBAdapter(db) {
@@ -331,6 +366,8 @@
   };
 
   A.storage = {
+    DB_VERSION,
+    on: (type, fn) => emitter.on(type, fn),
     init,
     getAdapter,
     requestPersistence,

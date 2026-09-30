@@ -2,12 +2,14 @@
  * Ampulheta — hourglass-renderer.js
  * Desenho da ampulheta em Canvas 2D.
  *
- * Camadas:
- *   1. "fundo"  (cache): sombra no chão, base inferior, hastes, corpo do vidro;
- *   2. areia     (dinâmica): massa superior e inferior, filete e grãos;
- *   3. "frente" (cache): reflexos, contorno do vidro, base superior.
- * As camadas em cache só são refeitas quando o tamanho muda. A cada quadro,
- * apenas a caixa da ampulheta é limpa e recomposta.
+ * Camadas (canvases empilhados, do tamanho da ampulheta — não da tela):
+ *   1. fundo  (estático): base inferior, hastes, corpo do vidro;
+ *   2. areia  (dinâmico): massa superior e inferior, filete e grãos;
+ *   3. frente (estático): reflexos, contorno do vidro, base superior.
+ * As camadas estáticas só são pintadas quando o tamanho muda. A massa de areia
+ * fica num cache e só é repintada quando a superfície se move ≥ 0,2 px; entre
+ * uma coisa e outra, um quadro custa uma cópia de bitmap e alguns grãos.
+ * Quando nada visível muda, nenhum pixel é tocado.
  *
  * Os grãos visíveis são funções puras do tempo (ver grain-engine.js): o
  * renderizador não guarda estado de partículas.
@@ -34,7 +36,9 @@
   const STREAM_RATE = 14;
   /** Abaixo desta taxa, cada pouso ganha um pequeno respingo. */
   const SPARSE_RATE = 1.2;
-  const MAX_PARTICLES = 260;
+  const MAX_PARTICLES = 220;
+  /** Janela em que um grão ainda está visível (no ar ou assentando). */
+  const WINDOW_MS = (MAX_AIR_S + SETTLE_S) * 1000;
 
   function hexToRgb(hex) {
     const n = parseInt(hex.slice(1), 16);
@@ -70,30 +74,66 @@
     return c;
   }
 
-  function createRenderer(canvas) {
-    const ctx = canvas.getContext('2d');
+  /** Limite de pixels por camada (evita canvases gigantes em telas de alta densidade). */
+  const MAX_LAYER_PIXELS = 5.2e6;
+
+  function createLayer(className) {
+    const c = document.createElement('canvas');
+    c.className = className;
+    c.setAttribute('aria-hidden', 'true');
+    return c;
+  }
+
+  /**
+   * Cria o renderizador dentro de `host`.
+   * Estrutura (todas as camadas têm o tamanho da ampulheta, não da tela):
+   *   .hg-shadow        sombra no chão (CSS, fica no chão durante a virada)
+   *   .hg-object        objeto (gira como um todo durante a virada)
+   *     canvas back     base inferior, hastes, corpo do vidro   — estático
+   *     canvas sand     areia, filete e grãos                    — dinâmico
+   *     canvas front    reflexos, contorno, base superior        — estático
+   */
+  function createRenderer(host) {
     const glass = A.geometry.createGlass();
     const sand = A.geometry.createSandModel(glass);
     const R = glass.maxRadius;
     const CAP_R = R + 0.082;
     const ROD_X = CAP_R - 0.042;
 
+    const shadowEl = document.createElement('div');
+    shadowEl.className = 'hg-shadow';
+    shadowEl.setAttribute('aria-hidden', 'true');
+    const objectEl = document.createElement('div');
+    objectEl.className = 'hg-object';
+    const backCv = createLayer('hg-layer hg-layer--back');
+    const sandCv = createLayer('hg-layer hg-layer--sand');
+    const frontCv = createLayer('hg-layer hg-layer--front');
+    objectEl.append(backCv, sandCv, frontCv);
+    host.append(shadowEl, objectEl);
+    const sctx = sandCv.getContext('2d');
+
+    // Cache da massa de areia: só é redesenhado quando a areia se move ≥ 0,2 px.
+    const sandCache = document.createElement('canvas');
+    const cctx = sandCache.getContext('2d');
+
     let dpr = 1;
     let cssW = 0;
     let cssH = 0;
     let insets = { top: 0, bottom: 0, side: 0 };
     let L = null; // layout
-    let caches = null;
-    let texture = null;
-    let gradCache = {};
-    let sandCache = { key: null, top: null, bottom: null };
+    let staticReady = false;
+    let sandCacheKey = null;
+    let lastBlitKey = null;
+    let lastDynamic = false;
+    let solved = { key: null, top: null, bottom: null };
+    const patterns = new WeakMap();
+    const gradients = new WeakMap();
 
     /* -------------------------------------------------------------- */
     /* Layout                                                           */
     /* -------------------------------------------------------------- */
 
-    function computeLayout() {
-      // Altura total do objeto em unidades (base a base + elipses + sombra).
+    function computeLayout(deviceRatio) {
       const unitsH = 2 + 2 * CAP_HEIGHT + 2 * CAP_R * ELEVATION + 0.06;
       const unitsW = 2 * CAP_R + 0.04;
       const availH = Math.max(40, cssH - insets.top - insets.bottom);
@@ -101,38 +141,61 @@
       const S = Math.max(10, Math.min(availH / unitsH, availW / unitsW));
       const cx = Math.round(cssW / 2);
       const cy = Math.round(insets.top + availH / 2);
-      const halfW = (CAP_R * 1.9) * S;
-      const topY = cy - (1 + CAP_HEIGHT + CAP_R * ELEVATION + 0.02) * S;
-      const botY = cy + (1 + CAP_HEIGHT + CAP_R * ELEVATION * 2.4 + 0.05) * S;
-      const bx = Math.floor((cx - halfW) * dpr);
-      const by = Math.floor(topY * dpr);
-      const bw = Math.ceil((cx + halfW) * dpr) - bx;
-      const bh = Math.ceil(botY * dpr) - by;
-      return { S, cx, cy, box: { x: bx, y: by, w: bw, h: bh } };
+      // Caixa simétrica em torno do gargalo: continua válida com a ampulheta virada.
+      const halfW = CAP_R * 1.06 * S + 2;
+      const halfH = (1 + CAP_HEIGHT + CAP_R * ELEVATION + 0.02) * S + 2;
+      const x = Math.floor(cx - halfW);
+      const y = Math.floor(cy - halfH);
+      const w = Math.ceil(cx + halfW) - x;
+      const h = Math.ceil(cy + halfH) - y;
+      let ratio = clamp(deviceRatio || 1, 1, 2);
+      if (w * h * ratio * ratio > MAX_LAYER_PIXELS) ratio = Math.max(1, Math.sqrt(MAX_LAYER_PIXELS / (w * h)));
+      return { S, cx, cy, x, y, w, h, ox: cx - x, oy: cy - y, dpr: ratio };
     }
 
-    const X = (x) => L.cx + x * L.S;
-    const Y = (y) => L.cy - y * L.S;
+    const X = (x) => L.ox + x * L.S;
+    const Y = (y) => L.oy - y * L.S;
+
+    function sizeCanvas(c) {
+      c.width = Math.max(1, Math.round(L.w * dpr));
+      c.height = Math.max(1, Math.round(L.h * dpr));
+    }
 
     function resize(width, height, ratio, newInsets) {
       cssW = Math.max(0, Math.round(width));
       cssH = Math.max(0, Math.round(height));
-      dpr = clamp(ratio || 1, 1, 2);
       if (newInsets) insets = Object.assign({}, insets, newInsets);
-      canvas.width = Math.max(1, Math.round(cssW * dpr));
-      canvas.height = Math.max(1, Math.round(cssH * dpr));
       if (!cssW || !cssH) {
         L = null;
         return;
       }
-      L = computeLayout();
-      caches = null;
-      gradCache = {};
-      texture = null;
+      const next = computeLayout(ratio);
+      const same =
+        L && next.x === L.x && next.y === L.y && next.w === L.w && next.h === L.h && next.dpr === L.dpr && next.S === L.S;
+      if (same) return;
+      L = next;
+      dpr = L.dpr;
+      objectEl.style.left = L.x + 'px';
+      objectEl.style.top = L.y + 'px';
+      objectEl.style.width = L.w + 'px';
+      objectEl.style.height = L.h + 'px';
+      objectEl.style.transformOrigin = L.ox + 'px ' + L.oy + 'px';
+      [backCv, sandCv, frontCv, sandCache].forEach(sizeCanvas);
+      // Sombra e poça de luz no chão.
+      const baseY = L.cy + (1 + CAP_HEIGHT) * L.S;
+      const sw = CAP_R * 5.2 * L.S;
+      const sh = sw * 0.2;
+      shadowEl.style.left = Math.round(L.cx - sw / 2) + 'px';
+      shadowEl.style.top = Math.round(baseY - sh / 2) + 'px';
+      shadowEl.style.width = Math.round(sw) + 'px';
+      shadowEl.style.height = Math.round(sh) + 'px';
+      staticReady = false;
+      sandCacheKey = null;
+      lastBlitKey = null;
     }
 
     function layout() {
-      return L ? { S: L.S, cx: L.cx, cy: L.cy, neckY: L.cy, baseY: Y(-1 - CAP_HEIGHT) } : null;
+      return L ? { S: L.S, cx: L.cx, cy: L.cy, box: { x: L.x, y: L.y, w: L.w, h: L.h } } : null;
     }
 
     /* -------------------------------------------------------------- */
@@ -233,31 +296,6 @@
     /* -------------------------------------------------------------- */
     /* Camada de fundo                                                  */
     /* -------------------------------------------------------------- */
-
-    function drawFloor(c) {
-      const baseY = Y(-1 - CAP_HEIGHT);
-      // Poça de luz difusa no chão.
-      c.save();
-      c.translate(L.cx, baseY);
-      c.scale(1, 0.16);
-      let g = c.createRadialGradient(0, 0, 0, 0, 0, CAP_R * 2.6 * L.S);
-      g.addColorStop(0, 'rgba(255,240,220,0.045)');
-      g.addColorStop(1, 'rgba(255,240,220,0)');
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(0, 0, CAP_R * 2.6 * L.S, 0, Math.PI * 2);
-      c.fill();
-      // Sombra de contato.
-      g = c.createRadialGradient(0, 0, 0, 0, 0, CAP_R * 1.55 * L.S);
-      g.addColorStop(0, 'rgba(0,0,0,0.72)');
-      g.addColorStop(0.55, 'rgba(0,0,0,0.38)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(0, 0, CAP_R * 1.55 * L.S, 0, Math.PI * 2);
-      c.fill();
-      c.restore();
-    }
 
     /** Base cilíndrica. yTop/yBottom em unidades. */
     function drawCap(c, yBottom, yTop, isTop) {
@@ -447,65 +485,79 @@
       drawCap(c, 1, 1 + CAP_HEIGHT, true);
     }
 
-    function buildCaches() {
-      const box = L.box;
-      const back = makeCanvas(box.w, box.h);
-      const front = makeCanvas(box.w, box.h);
+    function paintStatic() {
       for (const [cv, painter] of [
-        [back, (c) => {
-          drawFloor(c);
+        [backCv, (c) => {
           drawCap(c, -1 - CAP_HEIGHT, -1, false);
           drawRods(c);
           drawGlassBack(c);
         }],
-        [front, drawGlassFront]
+        [frontCv, drawGlassFront]
       ]) {
         const c = cv.getContext('2d');
-        c.setTransform(dpr, 0, 0, dpr, -box.x, -box.y);
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, cv.width, cv.height);
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
         painter(c);
       }
-      caches = { back, front };
+      staticReady = true;
     }
 
     /* -------------------------------------------------------------- */
     /* Areia                                                            */
     /* -------------------------------------------------------------- */
 
-    function buildTexture() {
-      const size = Math.round(96 * dpr);
-      const cv = makeCanvas(size, size);
-      const c = cv.getContext('2d');
-      const img = c.createImageData(size, size);
-      let seed = 7;
-      for (let i = 0; i < size * size; i++) {
-        seed = hash32(seed + i);
-        const r = seed / 4294967296;
-        const o = i * 4;
-        if (r < 0.1) {
-          img.data[o] = 0;
-          img.data[o + 1] = 0;
-          img.data[o + 2] = 0;
-          img.data[o + 3] = Math.round(20 + r * 500);
-        } else if (r > 0.94) {
-          img.data[o] = 255;
-          img.data[o + 1] = 246;
-          img.data[o + 2] = 228;
-          img.data[o + 3] = Math.round((r - 0.94) * 1300);
+    let textureSource = null;
+    let textureDpr = 0;
+
+    /** Textura granular (gerada uma vez por densidade de pixels). */
+    function patternFor(c) {
+      if (!textureSource || textureDpr !== dpr) {
+        const size = Math.round(96 * dpr);
+        const cv = document.createElement('canvas');
+        cv.width = size;
+        cv.height = size;
+        const tc = cv.getContext('2d');
+        const img = tc.createImageData(size, size);
+        let seed = 7;
+        for (let i = 0; i < size * size; i++) {
+          seed = hash32(seed + i);
+          const r = seed / 4294967296;
+          const o = i * 4;
+          if (r < 0.1) {
+            img.data[o + 3] = Math.round(20 + r * 500);
+          } else if (r > 0.94) {
+            img.data[o] = 255;
+            img.data[o + 1] = 246;
+            img.data[o + 2] = 228;
+            img.data[o + 3] = Math.round((r - 0.94) * 1300);
+          }
         }
+        tc.putImageData(img, 0, 0);
+        textureSource = cv;
+        textureDpr = dpr;
       }
-      c.putImageData(img, 0, 0);
-      const pattern = ctx.createPattern(cv, 'repeat');
-      if (pattern && typeof pattern.setTransform === 'function' && typeof DOMMatrix === 'function') {
-        pattern.setTransform(new DOMMatrix().scale(1 / dpr, 1 / dpr));
+      let entry = patterns.get(c);
+      if (!entry || entry.source !== textureSource) {
+        const pattern = c.createPattern(textureSource, 'repeat');
+        if (pattern && typeof pattern.setTransform === 'function' && typeof DOMMatrix === 'function') {
+          pattern.setTransform(new DOMMatrix().scale(1 / dpr, 1 / dpr));
+        }
+        entry = { source: textureSource, pattern };
+        patterns.set(c, entry);
       }
-      texture = pattern;
+      return entry.pattern;
     }
 
-    function toneGradients(tone) {
-      const key = tone;
-      if (gradCache[key]) return gradCache[key];
+    /** Gradientes por contexto, tom e layout (recriados só quando algo muda). */
+    function tonePaint(c, tone) {
+      let map = gradients.get(c);
+      if (!map || map.layout !== L) {
+        map = { layout: L, tones: {} };
+        gradients.set(c, map);
+      }
+      if (map.tones[tone]) return map.tones[tone];
       const t = TONES[tone] || TONES.areia;
-      const c = ctx;
       const body = hGradient(c, -R, R, [
         [0, rgba(t.deep, 1)],
         [0.1, rgba(t.dark, 1)],
@@ -529,20 +581,20 @@
         [0.75, rgba(t.base, 1)],
         [1, rgba(t.dark, 1)]
       ]);
-      gradCache[key] = { t, body, face, cone };
-      return gradCache[key];
+      map.tones[tone] = { t, body, face, cone, texture: patternFor(c) };
+      return map.tones[tone];
     }
 
     function solveSand(progress, remainingFraction) {
-      const key = progress + ':' + remainingFraction;
-      if (sandCache.key !== key) {
-        sandCache = {
-          key,
+      if (solved.key !== progress || solved.q !== remainingFraction) {
+        solved = {
+          key: progress,
+          q: remainingFraction,
           top: sand.topState(remainingFraction),
           bottom: sand.bottomState(progress)
         };
       }
-      return sandCache;
+      return solved;
     }
 
     function drawTopSand(c, top, G) {
@@ -557,8 +609,8 @@
       c.rect(X(-R - 0.05), Y(top.level), (2 * R + 0.1) * S, top.level * S + 2);
       c.fillStyle = G.body;
       c.fill();
-      if (texture) {
-        c.fillStyle = texture;
+      if (G.texture) {
+        c.fillStyle = G.texture;
         c.fill();
       }
       // Oclusão perto do gargalo.
@@ -575,8 +627,8 @@
       ellipsePath(c, 0, top.level, rr, rr * ELEVATION);
       c.fillStyle = G.face;
       c.fill();
-      if (texture) {
-        c.fillStyle = texture;
+      if (G.texture) {
+        c.fillStyle = G.texture;
         c.fill();
       }
       // Cratera: parede distante iluminada, parede próxima em sombra.
@@ -594,7 +646,6 @@
         g.addColorStop(1, rgba(mix(t.dark, t.deep, 0.4 * depth), 1));
         c.fillStyle = g;
         c.fill();
-        // Fundo do funil, onde a areia desaparece.
         const hole = c.createRadialGradient(X(0), cy + ry * 0.4, 0, X(0), cy + ry * 0.4, cr * S * 0.45);
         hole.addColorStop(0, rgba(t.deep, 0.55 * depth));
         hole.addColorStop(1, rgba(t.deep, 0));
@@ -620,14 +671,13 @@
       c.save();
       traceInner(c, -1);
       c.clip();
-      // Corpo (areia junto ao vidro)
       if (bottom.contactZ > 0.0005) {
         c.beginPath();
         c.rect(X(-R - 0.05), Y(yContact), (2 * R + 0.1) * S, bottom.contactZ * S + 2);
         c.fillStyle = G.body;
         c.fill();
-        if (texture) {
-          c.fillStyle = texture;
+        if (G.texture) {
+          c.fillStyle = G.texture;
           c.fill();
         }
         c.fillStyle = vGradient(c, yContact, -1, [
@@ -649,18 +699,16 @@
       c.closePath();
       c.fillStyle = G.cone;
       c.fill();
-      if (texture) {
-        c.fillStyle = texture;
+      if (G.texture) {
+        c.fillStyle = G.texture;
         c.fill();
       }
-      // Sombreamento suave do cone: base mais escura
       c.fillStyle = vGradient(c, yApex, yContact - rc * ELEVATION, [
         [0, 'rgba(255,248,235,0.06)'],
         [0.6, 'rgba(0,0,0,0)'],
         [1, 'rgba(0,0,0,0.14)']
       ]);
       c.fill();
-      // Linha de contato com o vidro
       if (bottom.contactZ > 0.0005) {
         c.beginPath();
         c.ellipse(X(0), Y(yContact), rc * S, rc * ELEVATION * S, 0, 0.1 * Math.PI, 0.9 * Math.PI);
@@ -671,6 +719,13 @@
       c.restore();
     }
 
+    /** Pinta a massa de areia (sem grãos) num contexto já limpo. */
+    function paintSand(c, top, bottom, tone) {
+      const G = tonePaint(c, tone);
+      drawTopSand(c, top, G);
+      drawBottomSand(c, bottom, G);
+    }
+
     /* -------------------------------------------------------------- */
     /* Grãos                                                            */
     /* -------------------------------------------------------------- */
@@ -679,46 +734,35 @@
       return -1 + sand.bottomSurfaceZ(bottom, x);
     }
 
+    function drawStream(c, t, rate, bottom) {
+      const neckR = glass.inner(0);
+      const density = clamp((rate - STREAM_RATE) / 60, 0, 1);
+      const w = Math.max(0.8, neckR * (0.5 + 0.35 * density) * L.S);
+      const y0 = Y(0.004);
+      const y1 = Y(landingY(bottom, 0)) + 1;
+      const g = c.createLinearGradient(0, y0, 0, y1);
+      g.addColorStop(0, rgba(t.light, 0.8));
+      g.addColorStop(0.2, rgba(t.grain, 0.5 + 0.3 * density));
+      g.addColorStop(1, rgba(t.grain, 0.32 + 0.3 * density));
+      c.fillStyle = g;
+      c.fillRect(X(0) - w / 2, y0, w, y1 - y0);
+    }
+
     /**
-     * Desenha os grãos no ar e retorna informações para o agendador.
-     * Cada grão k tem posição determinada apenas por (agora − instante de queda).
+     * Desenha os grãos no ar. A posição do grão k depende apenas de
+     * (agora − instante de queda de k): nada é acumulado entre quadros.
+     * Quantidade lógica ≠ partículas desenhadas: no máximo MAX_PARTICLES por quadro.
      */
-    function drawGrains(c, model, now, bottom, tone, seedBase, reduced) {
+    function drawGrains(c, model, now, bottom, tone, seedBase) {
       const t = TONES[tone] || TONES.areia;
       const S = L.S;
-      const result = { animating: false, stream: false };
-      if (now < model.start) return result;
-
-      const neckR = glass.inner(0);
-      const running = now < model.end;
-      const stream = running && model.rate >= STREAM_RATE && !reduced;
-      const apexY = landingY(bottom, 0);
-
-      // Filete contínuo para taxas altas.
-      if (running && model.rate >= STREAM_RATE) {
-        result.stream = true;
-        const density = clamp((model.rate - STREAM_RATE) / 60, 0, 1);
-        const w = Math.max(0.8, neckR * (0.5 + 0.35 * density) * S);
-        const y0 = Y(0.004);
-        const y1 = Y(apexY) + 1;
-        const g = c.createLinearGradient(0, y0, 0, y1);
-        g.addColorStop(0, rgba(t.light, 0.8));
-        g.addColorStop(0.2, rgba(t.grain, 0.5 + 0.3 * density));
-        g.addColorStop(1, rgba(t.grain, 0.32 + 0.3 * density));
-        c.fillStyle = g;
-        c.fillRect(X(0) - w / 2, y0, w, y1 - y0);
-      }
-
-      if (reduced) return result;
-
       const fallen = Grains.fallenAt(model, now);
-      if (fallen < 1) {
-        return result;
-      }
-      const windowS = MAX_AIR_S + SETTLE_S;
-      const oldest = Grains.fallenAt(model, now - windowS * 1000) + 1;
+      if (fallen < 1) return;
+      const oldest = Grains.fallenAt(model, now - WINDOW_MS) + 1;
       const span = fallen - oldest + 1;
-      if (span <= 0) return result;
+      if (span <= 0) return;
+      const neckR = glass.inner(0);
+      const stream = now < model.end && model.rate >= STREAM_RATE;
       const step = span > MAX_PARTICLES ? Math.ceil(span / MAX_PARTICLES) : 1;
       const size = Math.max(1, 0.0052 * S);
       const sparse = model.rate < SPARSE_RATE;
@@ -739,22 +783,18 @@
         const yl = landingY(bottom, xl);
         const d = RELEASE_Y - yl;
         const tLand = (-V0 + Math.sqrt(V0 * V0 + 2 * GRAVITY * d)) / GRAVITY;
+        const sz = size * (0.8 + r3 * 0.45);
+        c.fillStyle = shades[(h >>> 3) % 3];
         if (age < tLand) {
           const x = x0 + vx * age;
           const y = RELEASE_Y - (V0 * age + 0.5 * GRAVITY * age * age);
-          const sz = size * (0.8 + r3 * 0.45);
-          c.fillStyle = shades[(h >>> 3) % 3];
-          // leve rastro vertical proporcional à velocidade
           const vy = V0 + GRAVITY * age;
           const trail = Math.min(sz * 0.9, vy * 0.006 * S);
           c.fillRect(X(x) - sz / 2, Y(y) - sz / 2 - trail, sz, sz + trail);
-          result.animating = true;
         } else if (age < tLand + SETTLE_S) {
           const f = (age - tLand) / SETTLE_S;
           const x = x0 + vx * tLand;
-          const sz = size * (0.8 + r3 * 0.45);
           c.globalAlpha = (1 - f) * 0.9;
-          c.fillStyle = shades[(h >>> 3) % 3];
           c.fillRect(X(x) - sz / 2, Y(yl) - sz / 2 + f * sz * 0.6, sz, sz);
           if (sparse) {
             // Respingo mínimo: dois fragmentos que se afastam e assentam.
@@ -766,53 +806,75 @@
             }
           }
           c.globalAlpha = 1;
-          result.animating = true;
         }
       }
-
-      return result;
     }
 
     /* -------------------------------------------------------------- */
     /* Quadro                                                           */
     /* -------------------------------------------------------------- */
 
+    function sandKey(top, bottom, tone) {
+      const q = L.S * 2.5; // resolução de 0,4 px (imperceptível; poupa repinturas)
+      return (
+        tone + '|' +
+        (top.empty ? 'e' : Math.round(top.level * q) + ',' + Math.round(top.craterRadius * q) + ',' + Math.round((top.level - top.vertex) * q)) + '|' +
+        (bottom.empty ? 'e' : Math.round(bottom.apex * q) + ',' + Math.round(bottom.contactZ * q))
+      );
+    }
+
     /**
      * Desenha o estado da ampulheta no instante `now`.
-     * Retorna { animating, nextWakeAt, landed, stream, status }.
+     * options: { model, reducedMotion, progress (substitui o progresso real — usado
+     * apenas em animações), stream (força o filete) }.
+     * Retorna { animating, nextWakeAt, landed, stream, status, state }.
      */
     function draw(hourglass, now, options) {
       const opts = options || {};
       if (!L || !hourglass) return { animating: false, nextWakeAt: Infinity };
-      if (!caches) buildCaches();
-      if (!texture) buildTexture();
+      if (!staticReady) paintStatic();
 
       const state = A.time.computeState(hourglass, now);
       const model = opts.model || Grains.createModel(hourglass);
       const tone = hourglass.tone || 'areia';
-      const G = toneGradients(tone);
       const reduced = !!opts.reducedMotion;
-      const { top, bottom } = solveSand(state.progress, state.remainingFraction);
+      const override = typeof opts.progress === 'number';
+      const p = override ? clamp(opts.progress, 0, 1) : state.progress;
+      const q = override ? 1 - p : state.remainingFraction;
+      const { top, bottom } = solveSand(p, q);
 
-      const box = L.box;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(box.x, box.y, box.w, box.h);
-      ctx.drawImage(caches.back, box.x, box.y);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const key = sandKey(top, bottom, tone);
+      if (key !== sandCacheKey) {
+        cctx.setTransform(1, 0, 0, 1, 0, 0);
+        cctx.clearRect(0, 0, sandCache.width, sandCache.height);
+        cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        paintSand(cctx, top, bottom, tone);
+        sandCacheKey = key;
+      }
 
-      drawTopSand(ctx, top, G);
-      drawBottomSand(ctx, bottom, G);
+      const running = state.status === 'running';
+      const streamOn = override ? !!opts.stream : running && model.rate >= STREAM_RATE;
+      const inFlight =
+        !override && !reduced && now >= model.start && Grains.fallenAt(model, now) > Grains.fallenAt(model, now - WINDOW_MS);
+      const dynamic = streamOn || inFlight;
 
-      const seedBase = A.utils.hashString(hourglass.id || 'x');
-      const grains = drawGrains(ctx, model, now, bottom, tone, seedBase, reduced);
-
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(caches.front, box.x, box.y);
+      // Nada mudou desde o último quadro: não toca no canvas.
+      if (key !== lastBlitKey || dynamic || lastDynamic) {
+        sctx.setTransform(1, 0, 0, 1, 0, 0);
+        sctx.clearRect(0, 0, sandCv.width, sandCv.height);
+        sctx.drawImage(sandCache, 0, 0);
+        sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const t = TONES[tone] || TONES.areia;
+        if (streamOn) drawStream(sctx, t, override ? 60 : model.rate, bottom);
+        if (inFlight) drawGrains(sctx, model, now, bottom, tone, A.utils.hashString(hourglass.id || 'x'));
+        lastBlitKey = key;
+        lastDynamic = dynamic;
+      }
 
       // Próximo momento em que algo visível muda.
       let nextWakeAt = Infinity;
       if (state.status === 'pending') nextWakeAt = state.start;
-      else if (state.status === 'running') {
+      else if (running) {
         const fallen = Grains.fallenAt(model, now);
         nextWakeAt = Math.min(Grains.releaseTime(model, fallen + 1), state.end);
         // Atualização da massa: quando a superfície se moveria ~0,35 px.
@@ -821,12 +883,148 @@
         if (reduced) nextWakeAt = Math.max(nextWakeAt, now + 1000);
       }
 
-      const animating = !reduced && (grains.animating || (grains.stream && state.status === 'running'));
+      const animating = !reduced && (inFlight || (streamOn && running));
       const landed = Grains.fallenAt(model, now - 480);
-      return { animating, nextWakeAt, landed, stream: grains.stream, status: state.status, state };
+      return { animating, nextWakeAt, landed, stream: streamOn && running, status: state.status, state };
     }
 
-    return { resize, draw, layout, ELEVATION };
+    /** Força o redesenho completo no próximo quadro (ex.: troca de ampulheta). */
+    function invalidate() {
+      sandCacheKey = null;
+      lastBlitKey = null;
+    }
+
+    /* -------------------------------------------------------------- */
+    /* Virada (reinício)                                                */
+    /* -------------------------------------------------------------- */
+
+    const bulbPolys = { 1: sand.bulbPolygon(1), '-1': sand.bulbPolygon(-1) };
+
+    /**
+     * Areia como fluido: superfície perpendicular à gravidade dentro do bulbo
+     * `dir`, com o objeto girado de `angle` (radianos, sentido horário na tela).
+     */
+    function paintFluid(c, dir, angle, area, tone) {
+      const G = tonePaint(c, tone);
+      const poly = bulbPolys[dir];
+      const f = sand.fluidSurface(poly, angle, area);
+      if (f.points.length < 3) return;
+      const S = L.S;
+      c.save();
+      c.beginPath();
+      f.points.forEach((pt, i) => (i ? c.lineTo(X(pt[0]), Y(pt[1])) : c.moveTo(X(pt[0]), Y(pt[1]))));
+      c.closePath();
+      c.fillStyle = G.body;
+      c.fill();
+      // Em pleno giro a textura não se percebe: poupa o preenchimento mais caro.
+      const detail = Math.abs(Math.sin(angle)) < 0.3;
+      if (G.texture && detail) {
+        c.fillStyle = G.texture;
+        c.fill();
+      }
+      // Face da superfície: elipse alinhada ao horizonte do mundo.
+      if (f.chord.length >= 2) {
+        const a = f.chord[0];
+        const b = f.chord[f.chord.length - 1];
+        const mx = (a[0] + b[0]) / 2;
+        const my = (a[1] + b[1]) / 2;
+        const half = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+        if (half > 0.004) {
+          c.save();
+          traceInner(c, dir);
+          c.clip();
+          c.translate(X(mx), Y(my));
+          c.rotate(-angle);
+          c.beginPath();
+          c.ellipse(0, 0, half * S, half * ELEVATION * S, 0, 0, Math.PI * 2);
+          c.fillStyle = G.face;
+          c.fill();
+          if (G.texture && detail) {
+            c.fillStyle = G.texture;
+            c.fill();
+          }
+          c.beginPath();
+          c.ellipse(0, 0, half * S, half * ELEVATION * S, 0, 0.12 * Math.PI, 0.88 * Math.PI);
+          c.strokeStyle = rgba(G.t.light, 0.35);
+          c.lineWidth = 0.8;
+          c.stroke();
+          c.restore();
+        }
+      }
+      c.restore();
+    }
+
+    /**
+     * Cria um "dublê" do objeto para a virada: cópias das camadas estáticas e
+     * um canvas próprio de areia. Fica abaixo do objeto real.
+     */
+    function createFlipDouble() {
+      if (!L) return null;
+      if (!staticReady) paintStatic();
+      const el = document.createElement('div');
+      el.className = 'hg-object hg-object--double';
+      el.style.cssText = objectEl.style.cssText;
+      const layers = [backCv, sandCv, frontCv].map((src) => {
+        const c = createLayer(src.className);
+        c.width = src.width;
+        c.height = src.height;
+        return c;
+      });
+      const bctx = layers[0].getContext('2d');
+      bctx.drawImage(backCv, 0, 0);
+      layers[2].getContext('2d').drawImage(frontCv, 0, 0);
+      layers[1].getContext('2d').drawImage(sandCv, 0, 0);
+      el.append(...layers);
+      host.insertBefore(el, objectEl);
+      const dctx = layers[1].getContext('2d');
+      return {
+        el,
+        /** Desenha a areia do dublê: pilha rígida (mix 0) → fluido (mix 1). */
+        paint(angle, mix, finishedBottom, tone) {
+          dctx.setTransform(1, 0, 0, 1, 0, 0);
+          dctx.clearRect(0, 0, layers[1].width, layers[1].height);
+          dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          if (mix > 0) {
+            dctx.globalAlpha = mix;
+            paintFluid(dctx, -1, angle, sand.V0, tone);
+          }
+          if (mix < 1) {
+            dctx.globalAlpha = 1 - mix;
+            paintSand(dctx, { empty: true }, finishedBottom, tone);
+          }
+          dctx.globalAlpha = 1;
+        },
+        destroy() {
+          el.remove();
+        }
+      };
+    }
+
+    /** Areia do objeto real durante o fim da virada (bulbo superior, fluido). */
+    function paintFluidMain(angle, tone) {
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(0, 0, sandCv.width, sandCv.height);
+      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paintFluid(sctx, 1, angle, sand.V0, tone);
+      invalidate();
+    }
+
+    function finishedBottom() {
+      return sand.bottomState(1);
+    }
+
+    return {
+      resize,
+      draw,
+      layout,
+      invalidate,
+      createFlipDouble,
+      paintFluidMain,
+      finishedBottom,
+      objectEl,
+      shadowEl,
+      ELEVATION
+    };
   }
 
   A.renderer = { createRenderer, TONES: TONE_HEX };

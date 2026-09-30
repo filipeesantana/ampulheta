@@ -2,31 +2,29 @@
 
 > O tempo não precisa parecer que está passando para estar passando.
 
-**Ampulheta** é uma aplicação web estática que transforma intervalos de tempo em ampulhetas. Não é um cronômetro com desenho de ampulheta: a areia é calculada a partir do tempo real, e cada grão que cai representa uma fração exata do intervalo.
+**Ampulheta** é uma aplicação web estática que transforma intervalos de tempo em ampulhetas. A areia é calculada a partir do tempo real, e cada grão que cai representa uma fração exata do intervalo.
 
-Uma ampulheta de 10 segundos escorre sem parar. Uma de 94 anos pode passar a tarde inteira imóvel — cada grão dela vale cerca de 16 horas. Isso é intencional.
+Uma ampulheta de 30 segundos escorre sem parar. Uma de 94 anos pode passar a tarde inteira imóvel — cada grão dela vale cerca de 16 horas. Isso é intencional.
 
-Tudo roda no navegador. Não há servidor, conta, rastreamento nem build.
+Tudo roda no navegador. Não há servidor, conta, rastreamento nem etapa de build.
 
 ---
 
 ## Recursos
 
-- **Quantas ampulhetas você quiser**, independentes entre si (“Minha vida”, “Faculdade”, “Hoje”, “Próximas férias”…).
-- **Dois jeitos de criar**: entre duas datas (hora opcional) ou por uma duração — agora ou a partir de outra data (anos, meses, dias, horas, minutos e segundos, com atalhos rápidos).
-- **Início no passado** é permitido: a ampulheta já aparece parcialmente escoada (“desde que comecei a faculdade”).
-- **Grain Engine**: a quantidade de grãos se adapta à duração; os grãos só caem quando a sua fração de tempo termina.
+- **Quantas ampulhetas você quiser**, independentes entre si (“Minha vida”, “Faculdade”, “Projeto”, “Viagem”…).
+- **Criação simples**: por duração (30 minutos, 1 hora, 1 mês, 94 anos — começando agora ou em outra data) ou por duas datas (hora opcional). O início pode estar no passado.
+- **Troca rápida**: setas ao lado do nome, teclas ← →, deslizar o dedo, ou a lista rápida (toque no nome), com busca quando há muitas ampulhetas. A posição aparece discretamente (ex.: `3 / 8`).
+- **Reiniciar com virada**: a ampulheta gira 180° com peso e inércia, a areia acompanha a gravidade e o ciclo recomeça agora — **com a mesma duração** de antes (30 minutos continuam 30 minutos; 1 mês continua 1 mês de calendário).
+- **Ações claras** no botão “Ações” (•••): Informações, Editar, Reiniciar, Duplicar, Arquivar e Excluir. Quando uma ampulheta termina, “Reiniciar” aparece ao lado de “Terminou.”.
+- **Grain Engine**: a quantidade de grãos se adapta à duração; um grão só cai quando a sua fração de tempo termina.
 - **Persistência local** em IndexedDB: feche o navegador e volte anos depois — o estado é reconstruído na hora, sem “replay”.
-- **Painel de detalhes** (escondido por padrão): início, término, duração, decorrido, restante, percentuais com precisão adaptativa (ex.: `0,000000382%`), grãos totais, caídos, restantes, valor de cada grão e tempo até o próximo grão.
-- **Modo contemplação**: esconde tudo, oculta o cursor, usa tela cheia quando possível e mantém a tela acesa (Wake Lock).
-- **Final sóbrio**: a última areia cai, e aparece apenas “Terminou.”
-- **Editar, duplicar, reiniciar (nova cópia começando agora), arquivar e excluir** — com confirmação própria.
-- **Exportar/importar** tudo em JSON versionado, com validação, mesclagem ou substituição.
+- **Informações** (escondidas por padrão): progresso com números humanos (`47,2%`; `0,0000041%` só quando necessário), tempo decorrido e restante, datas, grãos e o valor de cada grão.
+- **Modo contemplação**: a ampulheta domina a tela, o nome permanece discreto, o resto some e o cursor se esconde; tela cheia e tela sempre acesa quando o navegador permite.
+- **Exportar/importar** em JSON versionado, com validação, mesclagem ou substituição. Backups da versão anterior continuam aceitos.
 - **Som opcional** (desligado por padrão), sintetizado localmente, muito discreto.
-- **Responsivo**: desktop, tablet e celular (gesto de deslizar para trocar de ampulheta).
-- **Acessível**: navegação por teclado, rótulos ARIA, foco visível, `prefers-reduced-motion`.
-- **PWA instalável** e funcionamento offline depois do primeiro carregamento.
-- **Sem dependências**: HTML, CSS e JavaScript puro. Fontes e ícones locais.
+- **Responsivo**, **acessível** (teclado, foco visível, rótulos, `prefers-reduced-motion`) e **instalável** (PWA, funciona offline).
+- **Sem dependências**: HTML, CSS e JavaScript puro. Fonte e ícones locais.
 
 ---
 
@@ -34,7 +32,7 @@ Tudo roda no navegador. Não há servidor, conta, rastreamento nem build.
 
 ### O tempo
 
-Cada ampulheta guarda apenas dois instantes absolutos (epoch em milissegundos, UTC): `start` e `end`. O estado é sempre calculado a partir do relógio do dispositivo:
+Cada ampulheta guarda dois instantes absolutos (epoch em milissegundos, UTC), `start` e `end`, e a sua **duração canônica**. O estado é sempre calculado a partir do relógio do dispositivo:
 
 ```
 progresso = (agora − início) / (término − início)
@@ -42,11 +40,19 @@ progresso = (agora − início) / (término − início)
 
 Timers e `requestAnimationFrame` servem apenas para **redesenhar**; nunca acumulam tempo. Ao voltar de uma aba em segundo plano, de uma suspensão do sistema ou de um navegador fechado, a ampulheta é redesenhada imediatamente no estado correto.
 
-Datas digitadas são interpretadas no fuso local e convertidas para epoch na hora. A exibição volta ao fuso local. O backup usa ISO 8601 em UTC.
+### Reiniciar
+
+Reiniciar define `início = agora` e `término = agora + duração canônica`. A duração canônica é guardada em unidades de calendário (`{ anos, meses, dias, horas, minutos, segundos }`):
+
+- criada por duração → exatamente o que foi digitado (ex.: `{ minutes: 30 }`);
+- criada por datas → a diferença de calendário entre as datas;
+- ampulhetas antigas (sem esse dado) → derivada de `término − início` na migração automática.
+
+O reinício só é gravado ao fim da animação, com o horário daquele instante. Com movimento reduzido, não há rotação: um esmaecimento curto e o reinício.
 
 ### O Grain Engine
 
-Cada ampulheta é dividida em **N grãos lógicos** de mesma duração. O grão *k* cai exatamente em `início + k · (duração / N)`. A quantidade N cresce de forma logarítmica com a duração:
+Cada ampulheta é dividida em **N grãos lógicos** de mesma duração. O grão *k* cai exatamente em `início + k · (duração / N)`. N cresce de forma logarítmica com a duração:
 
 ```
 u = log10(duração em segundos) / log10(90 anos em segundos)
@@ -62,37 +68,47 @@ N = 200 + (50 000 − 200) · u^2,75        (arredondado a 3 algarismos)
 | 1 ano   | 26 500 | ≈ 20 min      | silêncio             |
 | 94 anos | 50 000 | ≈ 16h 29min   | quase imóvel         |
 
-Duas âncoras calibram a curva: **1 hora ≈ 1 grão por segundo** e **90 anos (uma vida longa) = teto de 50 000 grãos**.
+Quantidade lógica de grãos ≠ partículas desenhadas: a posição de cada grão visível é função pura do tempo, e no máximo algumas centenas são desenhadas por quadro.
 
-### Massa × grãos
+### Massa de areia
 
-- **Massa de areia**: contínua, derivada do progresso exato. A quantidade é medida pela área visível — se 37,5% do tempo passou, 37,5% da areia visível está embaixo. Em cima, a superfície desce com uma cratera no ângulo de repouso da areia; embaixo, cresce uma pilha cônica.
-- **Grãos animados**: eventos discretos que atravessam o gargalo. A posição de cada grão é função pura do tempo (`agora − instante de queda`), então nada precisa ser armazenado e nada é reproduzido ao voltar.
+A massa é contínua e derivada do progresso exato, medida pela área visível — se 37,5% do tempo passou, 37,5% da areia visível está embaixo. Em cima, a superfície desce com uma cratera no ângulo de repouso; embaixo, cresce uma pilha cônica. As relações área → altura são tabeladas uma única vez.
 
-A renderização usa Canvas 2D com camadas em cache (vidro, bases, reflexos). Quando nada visível muda, **nenhum quadro é desenhado**: o agendador dorme até o próximo grão ou até a areia se mover perceptivelmente.
+Na virada, a areia se comporta como um fluido granular: a superfície fica perpendicular à gravidade dentro do bulbo e a área é conservada em qualquer ângulo (recorte de polígono + bisseção).
+
+### Desempenho
+
+- A ampulheta é desenhada em três canvases do tamanho dela (não da tela): fundo e frente estáticos (pintados só ao redimensionar) e areia dinâmica.
+- A massa de areia fica em cache e só é repintada quando a superfície se move perceptivelmente; quando nada visível muda, **nenhum quadro é desenhado** — o agendador dorme até o próximo grão.
+- `requestAnimationFrame` só roda com grãos no ar, filete contínuo ou animações; nada roda com a aba oculta.
+- Densidade de pixels limitada a 2× e a um teto de pixels por camada.
+- Sem `backdrop-filter`, sem blend modes sobre a animação; interface animada apenas com `transform` e `opacity`.
 
 ---
 
 ## Publicar no GitHub Pages
 
-1. Crie um repositório no GitHub (por exemplo, `ampulheta`).
-2. Envie **o conteúdo desta pasta** para a raiz do repositório (o `index.html` deve ficar na raiz).
-3. No repositório, abra **Settings → Pages**.
-4. Em **Build and deployment**, escolha **Deploy from a branch**, selecione a branch `main` e a pasta `/ (root)`. Salve.
-5. Aguarde um ou dois minutos e abra `https://SEU-USUARIO.github.io/ampulheta/`.
+1. Crie um repositório no GitHub (por exemplo, `ampulheta`) — ou use o existente.
+2. Envie **o conteúdo desta pasta** para a raiz do repositório (o `index.html` deve ficar na raiz), substituindo os arquivos anteriores.
+3. Em **Settings → Pages**, escolha **Deploy from a branch**, branch `main`, pasta `/ (root)`.
+4. Abra `https://SEU-USUARIO.github.io/ampulheta/`.
 
-Todos os caminhos são relativos: o projeto funciona em subdiretório, em domínio próprio ou em qualquer servidor estático. Não há roteamento — recarregar a página nunca quebra. O arquivo `.nojekyll` impede que o GitHub Pages processe os arquivos com Jekyll.
+Todos os caminhos são relativos: funciona em subdiretório, em domínio próprio ou em qualquer servidor estático. Não há roteamento — recarregar nunca quebra. O `.nojekyll` evita o processamento por Jekyll.
+
+### Atualizações
+
+O service worker usa **rede primeiro** e revalida cada arquivo com o servidor, então uma versão nova publicada chega na próxima visita. O cache é nomeado por versão e escopo, e caches antigos são apagados na ativação. Os arquivos CSS/JS também são referenciados com `?v=` no `index.html`. Ao publicar uma nova versão, atualize `VERSION` em `sw.js` e o `?v=` no `index.html` (recomendado, não obrigatório).
 
 ### Rodar localmente
 
-Abra o `index.html` diretamente no navegador, ou sirva a pasta com qualquer servidor estático:
+Abra o `index.html` diretamente ou sirva a pasta:
 
 ```bash
 python3 -m http.server 8000
-# depois abra http://localhost:8000
+# http://localhost:8000
 ```
 
-Via `file://` tudo funciona, exceto o service worker (modo offline) e, em alguns navegadores, as fontes locais — que dão lugar às fontes do sistema.
+Via `file://` tudo funciona, exceto o modo offline (service worker) e, em alguns navegadores, a fonte local — que dá lugar à fonte do sistema.
 
 ---
 
@@ -101,65 +117,63 @@ Via `file://` tudo funciona, exceto o service worker (modo offline) e, em alguns
 ```
 index.html              Página única (marcação, diálogos, ícones em SVG)
 manifest.webmanifest    Manifesto da PWA
-sw.js                   Service worker (rede primeiro, cache como reserva)
+sw.js                   Service worker (rede primeiro, cache versionado)
 css/
-  base.css              Fontes, tokens de design, reset, tipografia
-  layout.css            Palco, controles, legenda, introdução, contemplação
-  components.css        Botões, painéis, modais, formulários, avisos
-  hourglass.css         Luz, vinheta, granulação e transições da ampulheta
-  responsive.css        Adaptações para tablet, celular e telas baixas
+  base.css              Fonte, tokens de design, reset, tipografia
+  layout.css            Palco, barra superior, navegação inferior, contemplação
+  components.css        Botões, painéis, menus, modais, formulários, avisos
+  hourglass.css         Cenário, camadas da ampulheta e transições
+  responsive.css        Notebooks, tablets, celulares e telas baixas
 js/
   utils.js              Utilitários, hash determinístico, DOM seguro
-  time-engine.js        Fonte da verdade temporal, calendário, estados
+  time-engine.js        Fonte da verdade temporal e calendário
   format.js             Números, percentuais, datas e intervalos em pt-BR
-  grain-engine.js       Grain Engine: quantidade, valor e instante dos grãos
-  sand-geometry.js      Perfil do vidro e massa da areia (independente de pixels)
-  model.js              Esquema, criação e validação de registros
-  storage.js            IndexedDB (com alternativas) e preferências
-  store.js              Coleção de ampulhetas e operações; sincroniza abas
-  import-export.js      Backup JSON versionado
-  hourglass-renderer.js Desenho em Canvas 2D
-  scene.js              Agendador de renderização (quando redesenhar)
-  sound.js              Som opcional sintetizado (Web Audio)
-  ui-dialogs.js         Diálogos animados, confirmação e avisos
+  grain-engine.js       Grain Engine
+  sand-geometry.js      Vidro, massa de areia e areia fluida da virada
+  model.js              Esquema v2, migração e validação de registros
+  storage.js            IndexedDB (v2, com migração) e preferências
+  store.js              Coleção de ampulhetas, reinício e sincronização entre abas
+  import-export.js      Backup JSON versionado (v1 e v2)
+  hourglass-renderer.js Desenho em Canvas 2D em camadas
+  scene.js              Agendador de renderização
+  flip.js               Animação de virada (reinício)
+  sound.js              Som opcional sintetizado
+  ui-dialogs.js         Diálogos, popovers ancorados, confirmação e avisos
   ui-form.js            Criação e edição
-  ui-panels.js          Menu e painel de detalhes
-  ui-stage.js           Palco, navegação, deslizar, contemplação
+  ui-panels.js          Menu, lista rápida, ações e informações
+  ui-stage.js           Palco, navegação, deslizar, virada e contemplação
   ui-settings.js        Configurações, ajuda e importação
-  app.js                Inicialização, seleção e atalhos de teclado
+  app.js                Inicialização, seleção, ações e atalhos
 assets/
-  fonts/                Cormorant Garamond e Inter (SIL OFL 1.1)
+  fonts/                Inter (SIL OFL 1.1)
   icons/                Favicon e ícones da PWA
 tests/
-  index.html            Testes dos módulos de tempo, grãos, geometria e dados
+  index.html            Testes: tempo, grãos, geometria, reinício, migração e backups
 ```
 
-Os scripts são clássicos (não ES Modules) e registram suas APIs no namespace `Ampulheta`. A escolha é deliberada: assim o projeto abre direto do disco (`file://`) sem problemas de CORS e continua sem nenhuma etapa de build.
+Os scripts são clássicos (não ES Modules) e registram suas APIs no namespace `Ampulheta`, para que o projeto abra direto do disco sem problemas de CORS e continue sem build. As responsabilidades são separadas: **time-engine** (verdade temporal), **renderer/scene/flip** (representação), **ui-*** (interação) e **storage/store** (persistência). O FPS nunca determina o progresso.
 
 ---
 
-## Privacidade
+## Dados, privacidade e compatibilidade
 
-- Nenhuma informação das ampulhetas é enviada a servidor algum. Não há chamadas de rede além do carregamento dos próprios arquivos do site.
-- Sem contas, cookies de rastreamento, analytics ou CDNs.
-- Depois do primeiro carregamento (em HTTPS), a aplicação funciona offline.
+- As ampulhetas ficam no **IndexedDB** do navegador (banco `ampulheta`). Se ele não estiver disponível, a aplicação usa `localStorage` e, em último caso, só a memória da sessão — sempre com aviso.
+- Nada é enviado a servidor algum. Sem contas, cookies de rastreamento, analytics ou CDNs.
+- Os dados ficam **somente naquele navegador, naquele dispositivo**. Limpar os dados de navegação os apaga: exporte um backup de vez em quando.
 
-## Armazenamento
+### Esquema e migração
 
-- As ampulhetas ficam no **IndexedDB** do navegador (banco `ampulheta`). Se ele não estiver disponível, a aplicação usa `localStorage` e, em último caso, apenas a memória da sessão (com aviso).
-- Preferências pequenas (som, tela cheia, movimento reduzido, nome sob a ampulheta) ficam em `localStorage`.
-- Ao criar a primeira ampulheta, a aplicação pede ao navegador armazenamento persistente (`navigator.storage.persist()`), para reduzir o risco de limpeza automática.
-- Os dados ficam **somente naquele navegador, naquele dispositivo**. Outro navegador não os vê; limpar os dados de navegação os apaga. Exporte um backup de vez em quando.
-- Sites publicados no mesmo domínio (ex.: dois projetos em `usuario.github.io`) compartilham o mesmo IndexedDB.
+- **Banco v1 → v2**: ao abrir a nova versão, cada registro recebe `schemaVersion: 2`, `mode` e `duration` (derivada de `término − início`) dentro da própria transação de atualização do IndexedDB. Nada é apagado; registros ilegíveis ficam intactos e apenas são ignorados.
+- Se outra aba ainda estiver aberta com a versão antiga, ela libera o banco e mostra um aviso para recarregar.
 
-## Exportar e importar
+### Backup
 
-**Exportar** gera `ampulheta-backup-AAAA-MM-DD.json` com todas as ampulhetas (arquivadas inclusive) e as preferências:
+**Exportar** gera `ampulheta-backup-AAAA-MM-DD.json`:
 
 ```json
 {
   "format": "hourglass-backup",
-  "version": 1,
+  "version": 2,
   "exportedAt": "2026-09-30T12:00:00.000Z",
   "preferences": { "sound": false, "contemplationFullscreen": true, "reduceMotion": false, "showLabel": true },
   "hourglasses": [
@@ -167,7 +181,9 @@ Os scripts são clássicos (não ES Modules) e registram suas APIs no namespace 
       "id": "3f0c…",
       "name": "Minha vida",
       "start": "1995-03-10T03:00:00.000Z",
-      "end": "2075-03-10T03:00:00.000Z",
+      "end": "2089-03-10T03:00:00.000Z",
+      "mode": "duration",
+      "duration": { "years": 94, "months": 0, "days": 0, "hours": 0, "minutes": 0, "seconds": 0 },
       "tone": "areia",
       "archived": false,
       "order": 0,
@@ -178,44 +194,32 @@ Os scripts são clássicos (não ES Modules) e registram suas APIs no namespace 
 }
 ```
 
-**Importar** lê o arquivo e o valida **antes** de qualquer alteração:
-
-- JSON inválido, formato desconhecido ou versão mais nova que a suportada são recusados com mensagem clara.
-- Registros corrompidos (sem nome, datas inválidas, término antes do início…) são ignorados e contabilizados.
-- IDs repetidos dentro do arquivo são ignorados.
-- **Mesclar** adiciona ao que já existe, nunca apaga: um ID que já existe com o mesmo conteúdo é ignorado; com conteúdo diferente, é importado como cópia (novo ID).
-- **Substituir tudo** apaga as ampulhetas atuais e restaura as do arquivo, com as preferências (pede confirmação).
-- O conteúdo é tratado estritamente como dado: nada é executado nem inserido como HTML.
+**Importar** valida o arquivo **antes** de qualquer alteração: JSON inválido, formato desconhecido e versões mais novas são recusados com mensagem clara; registros corrompidos e IDs repetidos são ignorados e contabilizados. Backups **versão 1** continuam aceitos (a duração é derivada na importação). *Adicionar às atuais* nunca apaga nada (conflito de ID vira cópia); *Substituir tudo* pede confirmação. O conteúdo é tratado estritamente como dado.
 
 ---
 
 ## Atalhos de teclado
 
-| Tecla     | Ação                                   |
-|-----------|----------------------------------------|
-| ← →       | Trocar de ampulheta                    |
-| C         | Modo contemplação                      |
-| F         | Tela cheia                             |
-| I         | Detalhes                               |
-| M         | Menu                                   |
-| N         | Nova ampulheta                         |
-| S         | Som ligado/desligado                   |
-| ?         | Ajuda                                  |
-| Esc       | Fechar painel ou sair da contemplação  |
+| Tecla | Ação                                  |
+|-------|---------------------------------------|
+| ← →   | Ampulheta anterior / próxima          |
+| L     | Lista de ampulhetas                   |
+| N     | Nova ampulheta                        |
+| I     | Informações                           |
+| C     | Modo contemplação                     |
+| F     | Tela cheia                            |
+| M     | Menu                                  |
+| ?     | Ajuda                                 |
+| Esc   | Fechar / sair da contemplação         |
 
 Os atalhos não interferem quando você está digitando em um campo.
 
 ## Testes
 
-Abra `tests/index.html` (localmente ou no endereço publicado, em `/tests/`). A página executa os testes dos módulos de tempo, formatação, Grain Engine, geometria da areia, validação e backup, e mostra o resultado.
-
-## Atualizações e o service worker
-
-O service worker usa a estratégia **rede primeiro**: com internet, o navegador sempre recebe a versão mais recente publicada; sem internet, usa a cópia guardada. Não é necessário alterar nada no `sw.js` para publicar mudanças — basta enviar os arquivos. Se adicionar novos arquivos ao projeto, inclua-os na lista `ASSETS` do `sw.js` para que funcionem offline.
+Abra `tests/index.html` (localmente ou no endereço publicado, em `/tests/`). A página testa tempo e calendário, formatação, Grain Engine, massa de areia, areia fluida da virada, reinício com duração preservada (30 minutos, 1 mês, 94 anos), migração do esquema v1 e importação de backups v1 e v2.
 
 ## Licença
 
-Código sob a licença [MIT](LICENSE).
-Fontes: [Cormorant Garamond](https://github.com/CatharsisFonts/Cormorant) e [Inter](https://github.com/rsms/inter), ambas sob a SIL Open Font License 1.1 (textos em `assets/fonts/`).
+Código sob a licença [MIT](LICENSE). Fonte [Inter](https://github.com/rsms/inter) sob a SIL Open Font License 1.1 (`assets/fonts/OFL-Inter.txt`).
 
 Desenvolvido por Filipe Santana.

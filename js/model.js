@@ -1,8 +1,22 @@
 /*
  * Ampulheta — model.js
- * Esquema de uma ampulheta, criação e validação/saneamento de registros.
- * Usado tanto ao carregar do armazenamento quanto ao importar backups:
- * todo dado externo é tratado apenas como dado, validado campo a campo.
+ * Esquema de uma ampulheta, criação, migração e validação de registros.
+ * Usado ao carregar do armazenamento e ao importar backups: todo dado
+ * externo é tratado apenas como dado, validado campo a campo.
+ *
+ * Esquema atual (schemaVersion 2):
+ * {
+ *   schemaVersion: 2,
+ *   id, name, tone, archived, order, createdAt, updatedAt,
+ *   start, end,          // instantes absolutos (epoch ms, UTC) — a verdade temporal
+ *   mode,                // 'duration' | 'dates' — como o intervalo foi definido
+ *   duration             // { years, months, days, hours, minutes, seconds }
+ * }
+ * `duration` é a intenção temporal canônica: é ela que o "Reiniciar" usa
+ * (início = agora, término = agora + duração), inclusive para meses e anos.
+ *
+ * Versão 1 (sem schemaVersion, mode e duration) é migrada automaticamente:
+ * a duração é derivada de término − início (diferença de calendário).
  */
 (function (root) {
   'use strict';
@@ -24,6 +38,51 @@
   ];
   const TONE_IDS = TONES.map((t) => t.id);
   const DEFAULT_TONE = 'areia';
+
+  const SCHEMA_VERSION = 2;
+  const MODES = ['duration', 'dates'];
+  const DURATION_KEYS = ['years', 'months', 'days', 'hours', 'minutes', 'seconds'];
+  /** Limites generosos por unidade (tudo acima disso ultrapassa o ano 9999 de qualquer forma). */
+  const DURATION_MAX = { years: 9999, months: 120000, days: 3660000, hours: 87840000, minutes: 5270400000, seconds: 316224000000 };
+
+  /** Valida uma duração de calendário. Retorna o objeto limpo ou null. */
+  function cleanDuration(raw) {
+    if (!isPlainObject(raw)) return null;
+    const out = {};
+    let total = 0;
+    for (const key of DURATION_KEYS) {
+      const v = raw[key] == null ? 0 : raw[key];
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > DURATION_MAX[key]) return null;
+      out[key] = v;
+      total += v;
+    }
+    return total > 0 ? out : null;
+  }
+
+  /** Duração canônica derivada de dois instantes (usada na migração e no modo datas). */
+  function deriveDuration(start, end) {
+    const d = T.diffCalendar(start, end);
+    const out = {};
+    for (const key of DURATION_KEYS) out[key] = d[key] || 0;
+    if (d.milliseconds >= 500) out.seconds += 1;
+    if (DURATION_KEYS.every((k) => out[k] === 0)) out.seconds = 1;
+    return out;
+  }
+
+  function isEmptyDuration(d) {
+    return !d || DURATION_KEYS.every((k) => !d[k]);
+  }
+
+  /**
+   * Instantes de um reinício: começa agora e dura exatamente a duração canônica.
+   * Se, por algum motivo, a soma de calendário for inválida, preserva a duração em ms.
+   */
+  function restartInterval(hourglass, at) {
+    const start = typeof at === 'number' ? at : T.now();
+    let end = T.addDuration(start, hourglass.duration || {});
+    if (!T.isValidTimestamp(end) || end - start < T.MIN_DURATION) end = start + Math.max(T.MIN_DURATION, hourglass.end - hourglass.start);
+    return { start, end };
+  }
 
   /** Remove caracteres de controle, normaliza espaços e limita o tamanho. */
   function cleanName(value) {
@@ -85,14 +144,27 @@
     const tone = TONE_IDS.includes(raw.tone) ? raw.tone : DEFAULT_TONE;
     const order = typeof raw.order === 'number' && isFinite(raw.order) ? raw.order : 0;
 
+    // Migração: registros sem duração canônica a derivam de término − início.
+    let duration = cleanDuration(raw.duration);
+    let migrated = raw.schemaVersion !== SCHEMA_VERSION;
+    if (!duration) {
+      duration = deriveDuration(start, end);
+      migrated = true;
+    }
+    const mode = MODES.includes(raw.mode) ? raw.mode : 'dates';
+
     return {
       ok: true,
       idRegenerated,
+      migrated,
       value: {
+        schemaVersion: SCHEMA_VERSION,
         id,
         name,
         start,
         end,
+        mode,
+        duration,
         tone,
         archived: raw.archived === true,
         order,
@@ -105,10 +177,13 @@
   function create(data) {
     const now = T.now();
     return {
+      schemaVersion: SCHEMA_VERSION,
       id: A.utils.uuid(),
       name: cleanName(data.name),
       start: data.start,
       end: data.end,
+      mode: MODES.includes(data.mode) ? data.mode : 'dates',
+      duration: cleanDuration(data.duration) || deriveDuration(data.start, data.end),
       tone: TONE_IDS.includes(data.tone) ? data.tone : DEFAULT_TONE,
       archived: false,
       order: typeof data.order === 'number' ? data.order : 0,
@@ -129,6 +204,8 @@
       name: hg.name,
       start: toIso(hg.start),
       end: toIso(hg.end),
+      mode: hg.mode,
+      duration: Object.assign({}, hg.duration),
       tone: hg.tone,
       archived: hg.archived,
       order: hg.order,
@@ -138,6 +215,12 @@
   }
 
   A.model = {
+    SCHEMA_VERSION,
+    DURATION_KEYS,
+    cleanDuration,
+    deriveDuration,
+    isEmptyDuration,
+    restartInterval,
     NAME_MAX,
     TONES,
     TONE_IDS,

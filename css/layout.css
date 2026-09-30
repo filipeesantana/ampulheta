@@ -1,6 +1,6 @@
 /* ==========================================================================
    Ampulheta — layout.css
-   Palco, controles periféricos, legenda, introdução e modo contemplação.
+   Palco, barra superior, navegação inferior, primeiro uso e contemplação.
    ========================================================================== */
 
 .app {
@@ -14,208 +14,166 @@
   inset: 0;
   overflow: hidden;
   background: var(--bg);
+  /* O gesto horizontal é nosso; rolagem vertical e zoom continuam com o navegador. */
   touch-action: pan-y pinch-zoom;
   user-select: none;
   -webkit-user-select: none;
 }
 
 /* ---------------------------------------------------------------------------
-   Controles superiores
+   Barra superior
    ------------------------------------------------------------------------ */
-.chrome {
+.topbar {
   position: absolute;
   z-index: 5;
+  top: calc(10px + var(--safe-top));
+  left: calc(12px + var(--safe-left));
+  right: calc(12px + var(--safe-right));
   display: flex;
   align-items: center;
   gap: 2px;
-  transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease);
+  transition: opacity var(--t-slow) var(--ease);
 }
 
-.chrome--top {
-  top: calc(14px + var(--safe-top));
-  left: calc(14px + var(--safe-left));
-  right: calc(14px + var(--safe-right));
+.topbar__brand {
+  margin-left: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
 }
 
-.chrome__spacer {
+.topbar__spacer {
   flex: 1;
 }
 
-/* ---------------------------------------------------------------------------
-   Setas laterais
-   ------------------------------------------------------------------------ */
-.nav-arrow {
-  position: absolute;
-  z-index: 4;
-  top: 50%;
-  width: 52px;
-  height: 96px;
-  margin-top: -48px;
-  display: grid;
-  place-items: center;
-  color: #726c64;
-  border-radius: 999px;
-  transition: color var(--t) var(--ease), opacity var(--t-slow) var(--ease), transform var(--t) var(--ease);
-}
-
-.nav-arrow .icon {
-  width: 26px;
-  height: 26px;
-  stroke-width: 1.1;
-}
-
-.nav-arrow--prev {
-  left: calc(10px + var(--safe-left));
-}
-
-.nav-arrow--next {
-  right: calc(10px + var(--safe-right));
-}
-
-.nav-arrow:hover {
-  color: var(--ink-2);
-}
-
-.nav-arrow--prev:hover {
-  transform: translateX(-2px);
-}
-
-.nav-arrow--next:hover {
-  transform: translateX(2px);
-}
-
-.nav-arrow.is-hidden {
-  opacity: 0;
-  pointer-events: none;
+.topbar__new {
+  margin-right: 6px;
 }
 
 /* ---------------------------------------------------------------------------
-   Legenda (nome, estado, paginação)
+   Navegação inferior
    ------------------------------------------------------------------------ */
-.caption {
+.dock {
   position: absolute;
   z-index: 4;
   left: 0;
   right: 0;
-  bottom: calc(18px + var(--safe-bottom));
+  bottom: calc(14px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  padding: 0 12px;
   pointer-events: none;
-  transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease);
+  transition: opacity var(--t-slow) var(--ease);
 }
 
-.caption > * {
+.dock > * {
   pointer-events: auto;
 }
 
-.caption__name {
-  max-width: min(80vw, 560px);
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
+.dock:focus {
+  outline: none;
+}
+
+.dock__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  min-height: 36px;
+  margin-bottom: 2px;
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+  animation: fade-in 600ms var(--ease) both;
+}
+
+.dock__status-text {
+  letter-spacing: 0.01em;
+}
+
+.switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+}
+
+.switcher__arrow {
+  width: var(--hit);
+  height: var(--hit);
+  display: grid;
+  place-items: center;
+  flex: none;
   color: var(--ink-3);
+  border-radius: 50%;
+  transition: color var(--t) var(--ease), background-color var(--t) var(--ease), opacity var(--t) var(--ease);
+}
+
+.switcher__arrow:hover {
+  color: var(--ink);
+  background: var(--veil);
+}
+
+.switcher__arrow:active {
+  background: var(--veil-2);
+}
+
+.switcher__arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switcher__current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(64vw, 440px);
+  min-height: var(--hit);
+  padding: 0 12px 0 18px;
+  border-radius: 999px;
+  font-size: var(--fs-lg);
+  font-weight: 450;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  transition: background-color var(--t) var(--ease);
+}
+
+.switcher__current:hover {
+  background: var(--veil);
+}
+
+.switcher__current:active {
+  background: var(--veil-2);
+}
+
+.switcher__name {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: 999px;
-  transition: color var(--t) var(--ease), opacity var(--t) var(--ease);
+  transition: opacity 160ms var(--ease);
 }
 
-.caption__name:hover {
-  color: var(--ink-2);
-}
-
-.caption__name:empty {
-  display: none;
-}
-
-.caption__status {
-  min-height: 0;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 18px;
-  line-height: 1.2;
+.switcher__caret {
+  width: 16px;
+  height: 16px;
   color: var(--ink-3);
-  opacity: 0;
-  transition: opacity 1.6s var(--ease);
 }
 
-.caption__status.is-visible {
-  opacity: 1;
-}
-
-.caption__status:empty {
-  display: none;
-}
-
-body.hide-label .caption__name,
-body.hide-label .caption__status {
-  display: none;
-}
-
-.pager {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  min-height: 28px;
-}
-
-.pager__dot {
-  width: 22px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-}
-
-.pager__dot::before {
-  content: "";
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--ink-4);
-  transition: background var(--t) var(--ease), transform var(--t) var(--ease);
-}
-
-.pager__dot:hover::before {
-  background: var(--ink-2);
-}
-
-.pager__dot[aria-current="true"]::before {
-  background: var(--sand);
-  transform: scale(1.35);
-}
-
-.pager__count {
-  min-width: 64px;
-  padding: 4px 8px;
-  font-size: 11.5px;
-  letter-spacing: 0.12em;
+.dock__position {
+  min-height: 18px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
-  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.pager__step {
-  width: 32px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  color: var(--ink-3);
-  border-radius: 999px;
-}
-
-.pager__step .icon {
-  width: 16px;
-  height: 16px;
-}
-
-.pager__step:hover {
-  color: var(--ink);
+.dock__position:empty {
+  visibility: hidden;
 }
 
 /* ---------------------------------------------------------------------------
@@ -228,61 +186,43 @@ body.hide-label .caption__status {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: calc(30px + var(--safe-top)) var(--gutter) calc(34px + var(--safe-bottom));
+  justify-content: flex-end;
+  padding: 0 20px calc(40px + var(--safe-bottom));
   pointer-events: none;
   text-align: center;
-}
-
-.intro > * {
-  pointer-events: auto;
-}
-
-.intro__wordmark {
-  font-size: 12px;
-  color: var(--ink-3);
-  opacity: 0;
-  animation: rise 1.6s var(--ease-out) 0.2s forwards;
 }
 
 .intro__body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  opacity: 0;
-  animation: rise 1.6s var(--ease-out) 0.6s forwards;
+  gap: 14px;
+  pointer-events: auto;
+  animation: rise 700ms var(--ease-out) 120ms both;
+}
+
+.intro__brand {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-left: 0.32em;
 }
 
 .intro__title {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: clamp(28px, 3.1vw, 40px);
-  line-height: 1.1;
-  letter-spacing: 0.005em;
+  margin-bottom: 8px;
+  font-size: clamp(24px, 2.6vw, 32px);
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
   color: var(--ink);
-}
-
-.intro__text {
-  max-width: 40ch;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--ink-3);
-}
-
-.intro__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 10px;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -290,58 +230,88 @@ body.hide-label .caption__status {
   }
 }
 
-/* Na introdução não há navegação nem detalhes. */
-body.is-intro .nav-arrow,
-body.is-intro .caption,
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Na introdução não há navegação, informações nem ações. */
+body.is-intro .dock,
+body.is-intro .topbar__brand,
 body.is-intro #btn-info,
-body.is-intro #btn-contemplate {
+body.is-intro #btn-actions,
+body.is-intro #btn-contemplate,
+body.is-intro .topbar__new {
   display: none;
 }
 
 /* ---------------------------------------------------------------------------
-   Entrada e modo contemplação
+   Entrada, virada e contemplação
    ------------------------------------------------------------------------ */
-body.is-booting .chrome,
-body.is-booting .caption,
-body.is-booting .nav-arrow {
+body.is-booting .topbar,
+body.is-booting .dock {
   opacity: 0;
 }
 
-body.is-contemplating .chrome,
-body.is-contemplating .caption,
-body.is-contemplating .nav-arrow {
+/* Durante a virada, os controles recuam discretamente. */
+body.is-flipping .topbar,
+body.is-flipping .dock__status,
+body.is-flipping .dock__position {
+  opacity: 0.35;
+}
+
+body.is-contemplating .topbar,
+body.is-contemplating .dock__status,
+body.is-contemplating .dock__position,
+body.is-contemplating .switcher__arrow,
+body.is-contemplating .switcher__caret {
   opacity: 0;
   pointer-events: none;
 }
 
-body.is-contemplating .caption {
-  transform: translateY(6px);
+/* O nome permanece, bem discreto (se a preferência permitir). */
+body.is-contemplating .switcher__current {
+  pointer-events: none;
+  color: var(--ink-3);
+  font-weight: 400;
 }
 
-body.is-contemplating .chrome--top {
-  transform: translateY(-6px);
+body.is-contemplating.hide-name .switcher__current {
+  opacity: 0;
 }
 
-body.is-contemplating.show-controls .chrome,
-body.is-contemplating.show-controls .caption,
-body.is-contemplating.show-controls .nav-arrow:not(.is-hidden) {
+body.is-contemplating.show-controls .topbar,
+body.is-contemplating.show-controls .switcher__arrow:not(:disabled),
+body.is-contemplating.show-controls .switcher__caret,
+body.is-contemplating.show-controls .dock__position {
   opacity: 1;
   pointer-events: auto;
-  transform: none;
 }
 
-body.is-contemplating.show-controls .caption {
-  pointer-events: none;
-}
-
-body.is-contemplating.show-controls .caption > * {
+body.is-contemplating.show-controls .switcher__current {
+  opacity: 1;
   pointer-events: auto;
+  color: var(--ink);
 }
 
 body.is-contemplating.show-controls #btn-menu,
-body.is-contemplating.show-controls #btn-info {
+body.is-contemplating.show-controls .topbar__brand,
+body.is-contemplating.show-controls .topbar__new,
+body.is-contemplating.show-controls #btn-info,
+body.is-contemplating.show-controls #btn-actions {
   opacity: 0;
   pointer-events: none;
+}
+
+.topbar > *,
+.switcher__arrow,
+.switcher__caret,
+.switcher__current {
+  transition: opacity var(--t-slow) var(--ease), color var(--t) var(--ease), background-color var(--t) var(--ease);
 }
 
 body.is-contemplating.is-idle,

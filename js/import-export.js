@@ -2,16 +2,18 @@
  * Ampulheta — import-export.js
  * Backup em JSON versionado.
  *
- * Formato (versão 1):
+ * Formato (versão 2):
  * {
  *   "format": "hourglass-backup",
- *   "version": 1,
+ *   "version": 2,
  *   "exportedAt": "2026-09-30T12:00:00.000Z",
  *   "preferences": { "sound": false, ... },
  *   "hourglasses": [
- *     { "id", "name", "start", "end", "tone", "archived", "order", "createdAt", "updatedAt" }
+ *     { "id", "name", "start", "end", "mode", "duration", "tone", "archived", "order", "createdAt", "updatedAt" }
  *   ]
  * }
+ * A versão 1 (sem "mode" e "duration") continua sendo aceita: a duração é
+ * derivada de término − início durante a importação.
  * Instantes são ISO 8601 em UTC: o arquivo é inequívoco em qualquer fuso.
  * O conteúdo importado nunca é executado nem inserido como HTML.
  */
@@ -22,7 +24,8 @@
   const M = A.model;
 
   const FORMAT = 'hourglass-backup';
-  const VERSION = 1;
+  const VERSION = 2;
+  const MIN_VERSION = 1;
   const MAX_FILE_BYTES = 10 * 1024 * 1024;
   const MAX_RECORDS = 10000;
 
@@ -62,7 +65,7 @@
       return { ok: false, error: 'json' };
     }
     if (!M.isPlainObject(data) || data.format !== FORMAT) return { ok: false, error: 'format' };
-    if (typeof data.version !== 'number' || !Number.isInteger(data.version) || data.version < 1) {
+    if (typeof data.version !== 'number' || !Number.isInteger(data.version) || data.version < MIN_VERSION) {
       return { ok: false, error: 'version-invalid' };
     }
     if (data.version > VERSION) return { ok: false, error: 'version-newer', version: data.version };
@@ -93,6 +96,7 @@
 
     return {
       ok: true,
+      version: data.version,
       records,
       preferences,
       stats,

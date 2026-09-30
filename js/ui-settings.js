@@ -74,8 +74,8 @@
     const count = A.store.all().length;
     const noun = count === 1 ? '1 ampulheta' : F.formatInteger(count) + ' ampulhetas';
     let text;
-    if (kind === 'indexeddb') text = noun + ' guardadas neste navegador (IndexedDB).';
-    else if (kind === 'localstorage') text = noun + ' guardadas neste navegador (armazenamento local).';
+    if (kind === 'indexeddb') text = noun + ' guardadas neste navegador.';
+    else if (kind === 'localstorage') text = noun + ' guardadas neste navegador (modo alternativo de armazenamento).';
     else text = 'Armazenamento indisponível: as ampulhetas desta sessão não serão guardadas. Exporte antes de sair.';
     if (count === 1) text = text.replace('guardadas', 'guardada');
     const persist = await A.storage.persistenceStatus();
@@ -97,9 +97,9 @@
     E['s-motion'].disabled = system;
     E['s-motion-note'].textContent = system
       ? 'Seu sistema já pede movimento reduzido. A areia continua exata.'
-      : 'Os grãos deixam de cair visualmente; a areia continua exata.';
+      : 'Os grãos deixam de cair e a ampulheta não gira ao reiniciar. A areia continua exata.';
     describeStorage();
-    A.dialogs.open(settingsDialog, { initialFocus: E['s-sound'].disabled ? E['s-fullscreen'] : E['s-sound'] });
+    A.dialogs.open(settingsDialog, { initialFocus: qs('[data-close]', settingsDialog) });
   }
 
   async function clearAll() {
@@ -109,17 +109,17 @@
       return;
     }
     const ok = await A.dialogs.confirm({
-      title: 'Apagar todos os dados?',
+      title: 'Apagar todas as ampulhetas?',
       text:
-        'Todas as ' + F.formatInteger(count) + ' ampulhetas, inclusive as arquivadas, serão apagadas deste navegador. ' +
-        'Se quiser guardá-las, exporte um backup antes.',
+        (count === 1 ? 'A ampulheta' : 'As ' + F.formatInteger(count) + ' ampulhetas') +
+        ' deste navegador, inclusive as arquivadas, serão apagadas. Se quiser guardá-las, exporte um backup antes.',
       confirmLabel: 'Apagar tudo',
       danger: true
     });
     if (!ok) return;
     await A.store.clearAll();
     A.dialogs.close(settingsDialog);
-    A.dialogs.toast('Todos os dados foram apagados.');
+    A.dialogs.toast('Todas as ampulhetas foram apagadas.');
   }
 
   /* ------------------------------------------------------------------ */
@@ -184,10 +184,6 @@
     E['import-confirm'].disabled = false;
   }
 
-  function capitalize(s) {
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-  }
-
   async function confirmImport() {
     if (!pendingImport) return;
     const modeInput = qs('input[name="importMode"]:checked', importDialog);
@@ -204,18 +200,20 @@
       if (!ok) return;
     }
     E['import-confirm'].disabled = true;
+    E['import-confirm'].classList.add('is-loading');
     try {
+      await A.stage.settle();
       const result = await A.backup.applyImport(pendingImport, mode);
       A.dialogs.close(importDialog);
       A.dialogs.close(settingsDialog);
       let msg;
-      if (mode === 'replace') msg = F.formatInteger(result.added) + (result.added === 1 ? ' ampulheta restaurada.' : ' ampulhetas restauradas.');
+      if (mode === 'replace') msg = 'Backup importado: ' + F.formatInteger(result.added) + (result.added === 1 ? ' ampulheta.' : ' ampulhetas.');
       else {
         const parts = [];
-        if (result.added) parts.push(result.added === 1 ? '1 importada' : result.added + ' importadas');
+        if (result.added) parts.push(result.added === 1 ? '1 nova' : result.added + ' novas');
         if (result.copies) parts.push(result.copies === 1 ? '1 como cópia' : result.copies + ' como cópias');
         if (result.unchanged) parts.push(result.unchanged === 1 ? '1 já existia' : result.unchanged + ' já existiam');
-        msg = parts.length ? capitalize(F.joinList(parts)) + '.' : 'Nada a importar.';
+        msg = parts.length ? 'Backup importado: ' + F.joinList(parts) + '.' : 'Nada a importar.';
       }
       A.dialogs.toast(msg, { duration: 3600 });
       A.app.afterImport();
@@ -223,6 +221,8 @@
       console.error(err);
       E['import-error'].textContent = 'Não foi possível gravar os dados importados.';
       E['import-confirm'].disabled = false;
+    } finally {
+      E['import-confirm'].classList.remove('is-loading');
     }
   }
 

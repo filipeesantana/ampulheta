@@ -1,16 +1,19 @@
 /*
  * Ampulheta — service worker
+ *
  * Estratégia "rede primeiro, cache como reserva":
- *  - online, sempre busca a versão mais recente (atualizações publicadas no
- *    GitHub Pages aparecem sem precisar mudar nada aqui);
- *  - offline, serve os arquivos guardados na última visita.
- * Todos os caminhos são relativos ao escopo: funciona em subdiretórios
- * (ex.: https://usuario.github.io/ampulheta/).
+ *  - online, cada arquivo é revalidado com o servidor (cache: 'no-cache'), então
+ *    uma versão nova publicada no GitHub Pages chega na próxima visita — sem
+ *    ficar preso ao cache HTTP de 10 minutos nem a uma versão antiga;
+ *  - offline, serve a cópia guardada na última visita.
+ * O nome do cache carrega a versão e o escopo; caches antigos deste mesmo
+ * escopo são removidos na ativação. Todos os caminhos são relativos ao escopo:
+ * funciona em subdiretórios (ex.: https://usuario.github.io/ampulheta/).
  * Nenhum dado das ampulhetas passa por aqui — elas vivem no IndexedDB.
  */
 'use strict';
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const CACHE_PREFIX = 'ampulheta-';
 const CACHE = CACHE_PREFIX + VERSION + '@' + self.registration.scope;
 
@@ -34,6 +37,7 @@ const ASSETS = [
   './js/import-export.js',
   './js/hourglass-renderer.js',
   './js/scene.js',
+  './js/flip.js',
   './js/sound.js',
   './js/ui-dialogs.js',
   './js/ui-form.js',
@@ -41,10 +45,6 @@ const ASSETS = [
   './js/ui-stage.js',
   './js/ui-settings.js',
   './js/app.js',
-  './assets/fonts/cormorant-garamond-latin-400-normal.woff2',
-  './assets/fonts/cormorant-garamond-latin-400-italic.woff2',
-  './assets/fonts/cormorant-garamond-latin-500-normal.woff2',
-  './assets/fonts/cormorant-garamond-latin-500-italic.woff2',
   './assets/fonts/inter-latin-wght-normal.woff2',
   './assets/icons/favicon.svg',
   './assets/icons/favicon-32.png',
@@ -85,7 +85,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return;
 
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then((response) => {
         if (response && response.ok && response.type === 'basic') {
           const copy = response.clone();
