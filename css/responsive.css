@@ -1,0 +1,158 @@
+/* ==========================================================================
+   Ampulheta — responsive.css
+   Adaptações para tablet, celular e telas baixas.
+   ========================================================================== */
+
+/* Dispositivos sem mouse: as setas dão lugar ao gesto de deslizar. */
+@media (hover: none) and (pointer: coarse) {
+  .nav-arrow {
+    display: none;
+  }
+  .icon-btn:hover,
+  .menu-link:hover,
+  .hg-item:hover,
+  .action:hover {
+    background: transparent;
+  }
+}
+
+@media (max-width: 760px) {
+  .drawer {
+    width: 100vw;
+    border: 0;
+  }
+
+  .drawer__inner {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .info__title {
+    font-size: 32px;
+  }
+
+  /* Modais viram folhas que sobem da base */
+  .modal {
+    width: 100vw;
+    max-height: 94dvh;
+    margin: auto 0 0;
+    border-radius: 22px 22px 0 0;
+    border-bottom: 0;
+    transform: translateY(28px);
+  }
+
+  .modal--small {
+    width: 100vw;
+  }
+
+  .modal__inner {
+    padding: 22px 20px calc(20px + var(--safe-bottom));
+  }
+
+  .modal__title {
+    font-size: 26px;
+  }
+
+  .duration-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 8px;
+  }
+
+  .modal__foot .btn {
+    flex: 1 1 0;
+  }
+
+  .shortcuts {
+    grid-template-columns: 1fr;
+  }
+
+  .toasts,
+  .toasts[popover] {
+    top: calc(64px + var(--safe-top));
+  }
+}
+
+@media (max-width: 420px) {
+  .chrome--top {
+    top: calc(8px + var(--safe-top));
+    left: calc(6px + var(--safe-left));
+    right: calc(6px + var(--safe-right));
+  }
+
+  .caption {
+    bottom: calc(10px + var(--safe-bottom));
+  }
+
+  .caption__name {
+    font-size: 10.5px;
+    letter-spacing: 0.26em;
+  }
+
+  .intro__title {
+    font-size: 27px;
+  }
+
+  .intro__text {
+    font-size: 13px;
+  }
+
+  .dt__row {
+    flex-wrap: wrap;
+  }
+
+  .dt__row .input:first-child {
+    flex: 1 1 100%;
+  }
+
+  .input--time {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .info__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tones__list {
+    gap: 8px;
+  }
+}
+
+/* Telas baixas (celular deitado) */
+@media (max-height: 520px) {
+  .caption {
+    bottom: calc(6px + var(--safe-bottom));
+    gap: 0;
+  }
+
+  .caption__status {
+    font-size: 15px;
+  }
+
+  .intro {
+    padding-top: calc(14px + var(--safe-top));
+    padding-bottom: calc(14px + var(--safe-bottom));
+  }
+
+  .intro__text {
+    display: none;
+  }
+
+  .intro__title {
+    font-size: 24px;
+  }
+
+  .modal {
+    max-height: 96dvh;
+  }
+}
+
+/* Telas muito grandes: tipografia um pouco mais generosa */
+@media (min-width: 1600px) and (min-height: 1000px) {
+  .caption__name {
+    font-size: 12px;
+  }
+  .caption__status {
+    font-size: 20px;
+  }
+}

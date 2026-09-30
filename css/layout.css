@@ -1,0 +1,350 @@
+/* ==========================================================================
+   Ampulheta — layout.css
+   Palco, controles periféricos, legenda, introdução e modo contemplação.
+   ========================================================================== */
+
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Controles superiores
+   ------------------------------------------------------------------------ */
+.chrome {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease);
+}
+
+.chrome--top {
+  top: calc(14px + var(--safe-top));
+  left: calc(14px + var(--safe-left));
+  right: calc(14px + var(--safe-right));
+}
+
+.chrome__spacer {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Setas laterais
+   ------------------------------------------------------------------------ */
+.nav-arrow {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  width: 52px;
+  height: 96px;
+  margin-top: -48px;
+  display: grid;
+  place-items: center;
+  color: #726c64;
+  border-radius: 999px;
+  transition: color var(--t) var(--ease), opacity var(--t-slow) var(--ease), transform var(--t) var(--ease);
+}
+
+.nav-arrow .icon {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.1;
+}
+
+.nav-arrow--prev {
+  left: calc(10px + var(--safe-left));
+}
+
+.nav-arrow--next {
+  right: calc(10px + var(--safe-right));
+}
+
+.nav-arrow:hover {
+  color: var(--ink-2);
+}
+
+.nav-arrow--prev:hover {
+  transform: translateX(-2px);
+}
+
+.nav-arrow--next:hover {
+  transform: translateX(2px);
+}
+
+.nav-arrow.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Legenda (nome, estado, paginação)
+   ------------------------------------------------------------------------ */
+.caption {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: calc(18px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease);
+}
+
+.caption > * {
+  pointer-events: auto;
+}
+
+.caption__name {
+  max-width: min(80vw, 560px);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 999px;
+  transition: color var(--t) var(--ease), opacity var(--t) var(--ease);
+}
+
+.caption__name:hover {
+  color: var(--ink-2);
+}
+
+.caption__name:empty {
+  display: none;
+}
+
+.caption__status {
+  min-height: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity 1.6s var(--ease);
+}
+
+.caption__status.is-visible {
+  opacity: 1;
+}
+
+.caption__status:empty {
+  display: none;
+}
+
+body.hide-label .caption__name,
+body.hide-label .caption__status {
+  display: none;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 28px;
+}
+
+.pager__dot {
+  width: 22px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.pager__dot::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  transition: background var(--t) var(--ease), transform var(--t) var(--ease);
+}
+
+.pager__dot:hover::before {
+  background: var(--ink-2);
+}
+
+.pager__dot[aria-current="true"]::before {
+  background: var(--sand);
+  transform: scale(1.35);
+}
+
+.pager__count {
+  min-width: 64px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager__step {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border-radius: 999px;
+}
+
+.pager__step .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pager__step:hover {
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------------
+   Primeiro uso
+   ------------------------------------------------------------------------ */
+.intro {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(30px + var(--safe-top)) var(--gutter) calc(34px + var(--safe-bottom));
+  pointer-events: none;
+  text-align: center;
+}
+
+.intro > * {
+  pointer-events: auto;
+}
+
+.intro__wordmark {
+  font-size: 12px;
+  color: var(--ink-3);
+  opacity: 0;
+  animation: rise 1.6s var(--ease-out) 0.2s forwards;
+}
+
+.intro__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  animation: rise 1.6s var(--ease-out) 0.6s forwards;
+}
+
+.intro__title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(28px, 3.1vw, 40px);
+  line-height: 1.1;
+  letter-spacing: 0.005em;
+  color: var(--ink);
+}
+
+.intro__text {
+  max-width: 40ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Na introdução não há navegação nem detalhes. */
+body.is-intro .nav-arrow,
+body.is-intro .caption,
+body.is-intro #btn-info,
+body.is-intro #btn-contemplate {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Entrada e modo contemplação
+   ------------------------------------------------------------------------ */
+body.is-booting .chrome,
+body.is-booting .caption,
+body.is-booting .nav-arrow {
+  opacity: 0;
+}
+
+body.is-contemplating .chrome,
+body.is-contemplating .caption,
+body.is-contemplating .nav-arrow {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.is-contemplating .caption {
+  transform: translateY(6px);
+}
+
+body.is-contemplating .chrome--top {
+  transform: translateY(-6px);
+}
+
+body.is-contemplating.show-controls .chrome,
+body.is-contemplating.show-controls .caption,
+body.is-contemplating.show-controls .nav-arrow:not(.is-hidden) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+body.is-contemplating.show-controls .caption {
+  pointer-events: none;
+}
+
+body.is-contemplating.show-controls .caption > * {
+  pointer-events: auto;
+}
+
+body.is-contemplating.show-controls #btn-menu,
+body.is-contemplating.show-controls #btn-info {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.is-contemplating.is-idle,
+body.is-contemplating.is-idle * {
+  cursor: none !important;
+}

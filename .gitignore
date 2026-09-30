@@ -1,0 +1,18 @@
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*~
+
+# Dependências e artefatos (o projeto não precisa de nenhum)
+node_modules/
+dist/
+*.log
+
+# Backups exportados localmente
+ampulheta-backup-*.json

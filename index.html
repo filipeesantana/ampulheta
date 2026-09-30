@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ampulheta</title>
+  <meta name="description" content="Ampulhetas que tornam visível a passagem do tempo. Cada grão é uma fração real do intervalo.">
+  <meta name="theme-color" content="#0a0a0b">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ampulheta">
+  <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/hourglass.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body class="is-booting">
+
+  <!-- Ícones (sprite local, sem CDN) -->
+  <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 9h16M4 15h10"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2M12 7.9v.1"/></symbol>
+      <symbol id="i-focus" viewBox="0 0 24 24"><path d="M4.5 9V4.5H9M19.5 9V4.5H15M4.5 15v4.5H9M19.5 15v4.5H15"/></symbol>
+      <symbol id="i-focus-exit" viewBox="0 0 24 24"><path d="M9 4.5V9H4.5M15 4.5V9h4.5M9 19.5V15H4.5M15 19.5V15h4.5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 5.5L16 12l-6.5 6.5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M5 19h3.4L18.6 8.8 15.2 5.4 5 15.6V19zM13.4 7.2l3.4 3.4"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="10.5" height="10.5" rx="1.5"/><path d="M5.5 15.5V7A1.5 1.5 0 0 1 7 5.5h8.5"/></symbol>
+      <symbol id="i-restart" viewBox="0 0 24 24"><path d="M5.2 12.5a6.9 6.9 0 1 0 2-5.3"/><path d="M5.5 4.5v4h4"/></symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="4" rx="1"/><path d="M5.5 9v9.5A1.5 1.5 0 0 0 7 20h10a1.5 1.5 0 0 0 1.5-1.5V9M10 13h4"/></symbol>
+      <symbol id="i-unarchive" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="4" rx="1"/><path d="M5.5 9v9.5A1.5 1.5 0 0 0 7 20h10a1.5 1.5 0 0 0 1.5-1.5V9M12 17.5v-5M9.8 14.5L12 12.3l2.2 2.2"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l.9 12.5h8.2L17 7M10.5 10.5v6M13.5 10.5v6"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v10.5M7.8 10.8L12 15l4.2-4.2M5 19.5h14"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.8 8.7L12 4.5l4.2 4.2M5 19.5h14"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.8 9.7a2.3 2.3 0 1 1 3.2 2.1c-.7.3-1 .9-1 1.6v.4M12 16.4v.1"/></symbol>
+      <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.5 4 6 4 8.5s-4 4-4 8.5M16 3.5c0 4.5-4 6-4 8.5s4 4 4 8.5"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app">
+    <main class="stage" id="stage">
+      <h1 class="visually-hidden">Ampulheta</h1>
+      <div class="stage__light" aria-hidden="true"></div>
+      <div class="stage__glass" id="glass-wrap">
+        <canvas id="hourglass" class="hourglass-canvas" role="img" aria-label="Ampulheta"></canvas>
+      </div>
+      <div class="stage__grain" aria-hidden="true"></div>
+
+      <!-- Controles superiores -->
+      <header class="chrome chrome--top">
+        <button class="icon-btn" id="btn-menu" type="button" aria-label="Abrir menu" title="Menu (M)" aria-haspopup="dialog" aria-controls="menu-panel">
+          <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+        </button>
+        <span class="chrome__spacer"></span>
+        <button class="icon-btn" id="btn-info" type="button" aria-label="Detalhes da ampulheta" title="Detalhes (I)" aria-haspopup="dialog" aria-controls="info-panel">
+          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-contemplate" type="button" aria-label="Modo contemplação" title="Modo contemplação (C)" aria-pressed="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-focus"/></svg>
+        </button>
+      </header>
+
+      <!-- Navegação lateral -->
+      <button class="nav-arrow nav-arrow--prev" id="btn-prev" type="button" aria-label="Ampulheta anterior" title="Anterior (←)">
+        <svg class="icon" aria-hidden="true"><use href="#i-prev"/></svg>
+      </button>
+      <button class="nav-arrow nav-arrow--next" id="btn-next" type="button" aria-label="Próxima ampulheta" title="Próxima (→)">
+        <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
+      </button>
+
+      <!-- Legenda -->
+      <footer class="caption" id="caption">
+        <button class="caption__name" id="caption-name" type="button" aria-haspopup="dialog" aria-controls="info-panel"></button>
+        <p class="caption__status" id="caption-status"></p>
+        <nav class="pager" id="pager" aria-label="Ampulhetas"></nav>
+      </footer>
+
+      <!-- Primeiro uso -->
+      <section class="intro" id="intro" aria-labelledby="intro-title" hidden>
+        <p class="wordmark intro__wordmark">Ampulheta</p>
+        <div class="intro__body">
+          <h2 class="intro__title" id="intro-title">Dê um intervalo ao tempo.</h2>
+          <p class="intro__text" id="intro-text">Esta é a ampulheta de hoje.</p>
+          <div class="intro__actions">
+            <button class="btn btn--primary" id="intro-create" type="button">Criar ampulheta</button>
+            <button class="btn btn--quiet" id="intro-import" type="button">Importar backup</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Menu                                                          -->
+  <!-- ============================================================ -->
+  <dialog class="drawer drawer--left" id="menu-panel" aria-labelledby="menu-title">
+    <div class="drawer__inner">
+      <header class="drawer__head">
+        <p class="wordmark" id="menu-title">Ampulheta</p>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar menu">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+      <p class="drawer__lede">O tempo não precisa parecer que está passando para estar passando.</p>
+
+      <button class="btn btn--primary btn--block" id="menu-new" type="button">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span>Nova ampulheta</span>
+      </button>
+
+      <section class="menu-section" aria-labelledby="menu-list-title">
+        <h2 class="overline" id="menu-list-title">Ampulhetas</h2>
+        <ul class="hg-list" id="menu-list"></ul>
+        <p class="empty-note" id="menu-empty" hidden>Nenhuma ampulheta ainda.</p>
+      </section>
+
+      <details class="menu-section menu-section--archived" id="menu-archived-wrap" hidden>
+        <summary class="overline">Arquivadas <span class="count" id="menu-archived-count"></span></summary>
+        <ul class="hg-list" id="menu-archived"></ul>
+      </details>
+
+      <nav class="menu-links" aria-label="Dados e ajuda">
+        <button class="menu-link" id="menu-export" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Exportar dados</span>
+        </button>
+        <button class="menu-link" id="menu-import" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg><span>Importar dados</span>
+        </button>
+        <button class="menu-link" id="menu-settings" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg><span>Configurações</span>
+        </button>
+        <button class="menu-link" id="menu-help" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-help"/></svg><span>Sobre e ajuda</span>
+        </button>
+      </nav>
+
+      <p class="drawer__foot">Seus dados ficam apenas neste navegador.</p>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Detalhes                                                      -->
+  <!-- ============================================================ -->
+  <dialog class="drawer drawer--right" id="info-panel" aria-labelledby="info-title">
+    <div class="drawer__inner">
+      <header class="drawer__head">
+        <p class="overline">Detalhes</p>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar detalhes">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+
+      <h2 class="info__title" id="info-title"></h2>
+      <p class="info__status" id="info-status"></p>
+      <div class="info__bar" aria-hidden="true"><span class="info__bar-fill" id="info-bar"></span></div>
+
+      <p class="info__grain" id="info-grain"></p>
+
+      <dl class="info__list">
+        <div class="info__row"><dt>Início</dt><dd id="info-start"></dd></div>
+        <div class="info__row"><dt>Término</dt><dd id="info-end"></dd></div>
+        <div class="info__row"><dt>Duração total</dt><dd id="info-duration"></dd></div>
+        <div class="info__row info__row--gap"><dt>Tempo decorrido</dt><dd id="info-elapsed"></dd></div>
+        <div class="info__row"><dt>Tempo restante</dt><dd id="info-remaining"></dd></div>
+        <div class="info__row info__row--gap"><dt>Transcorrido</dt><dd class="num" id="info-pct"></dd></div>
+        <div class="info__row"><dt>Restante</dt><dd class="num" id="info-pct-rest"></dd></div>
+        <div class="info__row info__row--gap"><dt>Grãos lógicos</dt><dd class="num" id="info-grains"></dd></div>
+        <div class="info__row"><dt>Já caíram</dt><dd class="num" id="info-fallen"></dd></div>
+        <div class="info__row"><dt>Restam</dt><dd class="num" id="info-left"></dd></div>
+        <div class="info__row"><dt>Cada grão</dt><dd id="info-grain-value"></dd></div>
+        <div class="info__row"><dt>Próximo grão</dt><dd id="info-next"></dd></div>
+      </dl>
+      <p class="info__tz" id="info-tz"></p>
+
+      <div class="info__actions">
+        <button class="action" id="act-edit" type="button"><svg class="icon" aria-hidden="true"><use href="#i-edit"/></svg><span>Editar</span></button>
+        <button class="action" id="act-duplicate" type="button"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Duplicar</span></button>
+        <button class="action" id="act-restart" type="button" title="Cria uma cópia com a mesma duração, começando agora"><svg class="icon" aria-hidden="true"><use href="#i-restart"/></svg><span>Reiniciar</span></button>
+        <button class="action" id="act-archive" type="button"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span>Arquivar</span></button>
+        <button class="action action--danger" id="act-delete" type="button"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Excluir</span></button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Criar / editar                                                -->
+  <!-- ============================================================ -->
+  <dialog class="modal" id="form-dialog" aria-labelledby="form-title">
+    <form class="modal__inner" id="hg-form" novalidate autocomplete="off">
+      <header class="modal__head">
+        <h2 class="modal__title" id="form-title">Nova ampulheta</h2>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+
+      <div class="field">
+        <label class="field__label" for="f-name">Nome</label>
+        <input class="input input--large" id="f-name" name="name" type="text" maxlength="80" required placeholder="Ex.: Minha vida, Faculdade, Hoje" spellcheck="false">
+      </div>
+
+      <div class="segmented" role="radiogroup" aria-label="Como definir o intervalo">
+        <label class="segmented__option">
+          <input type="radio" name="mode" value="dates" checked>
+          <span>Entre duas datas</span>
+        </label>
+        <label class="segmented__option">
+          <input type="radio" name="mode" value="duration">
+          <span>Por uma duração</span>
+        </label>
+      </div>
+
+      <div class="pane" id="pane-dates">
+        <fieldset class="dt">
+          <legend class="field__label">Início</legend>
+          <div class="dt__row">
+            <input class="input" id="f-start-date" type="date" aria-label="Data de início" min="0001-01-01" max="9999-12-31">
+            <input class="input input--time" id="f-start-time" type="time" aria-label="Hora de início (opcional)">
+            <button class="link-btn" id="f-start-now" type="button">agora</button>
+          </div>
+        </fieldset>
+        <fieldset class="dt">
+          <legend class="field__label">Término</legend>
+          <div class="dt__row">
+            <input class="input" id="f-end-date" type="date" aria-label="Data de término" min="0001-01-01" max="9999-12-31">
+            <input class="input input--time" id="f-end-time" type="time" aria-label="Hora de término (opcional)">
+          </div>
+        </fieldset>
+        <p class="hint">A hora é opcional; sem ela, considera-se 00:00. O início pode estar no passado.</p>
+      </div>
+
+      <div class="pane" id="pane-duration" hidden>
+        <div class="chips" role="group" aria-label="Durações rápidas" id="f-presets">
+          <button class="chip" type="button" data-preset="seconds:30">30 s</button>
+          <button class="chip" type="button" data-preset="minutes:10">10 min</button>
+          <button class="chip" type="button" data-preset="hours:1">1 h</button>
+          <button class="chip" type="button" data-preset="days:1">1 dia</button>
+          <button class="chip" type="button" data-preset="days:7">1 semana</button>
+          <button class="chip" type="button" data-preset="months:1">1 mês</button>
+          <button class="chip" type="button" data-preset="years:1">1 ano</button>
+          <button class="chip" type="button" data-preset="years:10">10 anos</button>
+        </div>
+        <div class="duration-grid">
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="9999" step="1" id="f-d-years" placeholder="0"><span>anos</span></label>
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="120000" step="1" id="f-d-months" placeholder="0"><span>meses</span></label>
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="3660000" step="1" id="f-d-days" placeholder="0"><span>dias</span></label>
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="87600000" step="1" id="f-d-hours" placeholder="0"><span>horas</span></label>
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="999999999" step="1" id="f-d-minutes" placeholder="0"><span>minutos</span></label>
+          <label class="dur"><input class="input input--num" type="number" inputmode="numeric" min="0" max="999999999" step="1" id="f-d-seconds" placeholder="0"><span>segundos</span></label>
+        </div>
+        <fieldset class="start-choice">
+          <legend class="field__label">Começo</legend>
+          <label class="radio"><input type="radio" name="startMode" value="now" checked><span>Agora</span></label>
+          <label class="radio"><input type="radio" name="startMode" value="custom"><span>Em outra data</span></label>
+          <div class="dt__row" id="f-dstart-row" hidden>
+            <input class="input" id="f-dstart-date" type="date" aria-label="Data de início" min="0001-01-01" max="9999-12-31">
+            <input class="input input--time" id="f-dstart-time" type="time" aria-label="Hora de início (opcional)">
+          </div>
+        </fieldset>
+      </div>
+
+      <fieldset class="tones">
+        <legend class="field__label">Areia</legend>
+        <div class="tones__list" id="f-tones"></div>
+      </fieldset>
+
+      <p class="form-preview" id="f-preview" aria-live="polite"></p>
+      <p class="form-error" id="f-error" role="alert"></p>
+
+      <footer class="modal__foot">
+        <button class="btn btn--quiet" type="button" data-close>Cancelar</button>
+        <button class="btn btn--primary" type="submit" id="f-submit">Criar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Confirmação                                                   -->
+  <!-- ============================================================ -->
+  <dialog class="modal modal--small" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+    <div class="modal__inner">
+      <h2 class="modal__title" id="confirm-title"></h2>
+      <p class="modal__text" id="confirm-text"></p>
+      <footer class="modal__foot">
+        <button class="btn btn--quiet" type="button" id="confirm-cancel">Cancelar</button>
+        <button class="btn btn--primary" type="button" id="confirm-ok">Confirmar</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Importar                                                      -->
+  <!-- ============================================================ -->
+  <dialog class="modal" id="import-dialog" aria-labelledby="import-title">
+    <div class="modal__inner">
+      <header class="modal__head">
+        <h2 class="modal__title" id="import-title">Importar dados</h2>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+      <p class="modal__text">Escolha um arquivo <code>.json</code> exportado pela Ampulheta. Ele é lido apenas neste navegador.</p>
+      <label class="dropzone" id="import-drop" for="import-file">
+        <input class="visually-hidden" type="file" id="import-file" accept=".json,application/json">
+        <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>
+        <span class="dropzone__label" id="import-file-label">Escolher arquivo</span>
+        <span class="dropzone__hint">ou arraste-o até aqui</span>
+      </label>
+      <div class="import-summary" id="import-summary" hidden>
+        <p class="import-summary__text" id="import-summary-text"></p>
+        <fieldset class="choice">
+          <legend class="field__label">Como importar</legend>
+          <label class="choice__option">
+            <input type="radio" name="importMode" value="merge" checked>
+            <span><strong>Mesclar</strong><small>Adiciona às ampulhetas atuais. Nada é apagado.</small></span>
+          </label>
+          <label class="choice__option">
+            <input type="radio" name="importMode" value="replace">
+            <span><strong>Substituir tudo</strong><small>Apaga as ampulhetas atuais e restaura as do arquivo, com as preferências.</small></span>
+          </label>
+        </fieldset>
+      </div>
+      <p class="form-error" id="import-error" role="alert"></p>
+      <footer class="modal__foot">
+        <button class="btn btn--quiet" type="button" data-close>Cancelar</button>
+        <button class="btn btn--primary" type="button" id="import-confirm" disabled>Importar</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Configurações                                                 -->
+  <!-- ============================================================ -->
+  <dialog class="modal" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="modal__inner">
+      <header class="modal__head">
+        <h2 class="modal__title" id="settings-title">Configurações</h2>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+
+      <div class="settings">
+        <label class="setting">
+          <span class="setting__text"><strong>Som dos grãos</strong><small>Um sopro de areia, muito discreto, quando um grão cai.</small></span>
+          <input class="switch" type="checkbox" id="s-sound">
+        </label>
+        <label class="setting">
+          <span class="setting__text"><strong>Tela cheia na contemplação</strong><small>Ocupa a tela inteira quando o navegador permite.</small></span>
+          <input class="switch" type="checkbox" id="s-fullscreen">
+        </label>
+        <label class="setting">
+          <span class="setting__text"><strong>Reduzir animações</strong><small id="s-motion-note">Os grãos deixam de cair visualmente; a areia continua exata.</small></span>
+          <input class="switch" type="checkbox" id="s-motion">
+        </label>
+        <label class="setting">
+          <span class="setting__text"><strong>Nome sob a ampulheta</strong><small>Exibe discretamente o nome da ampulheta atual.</small></span>
+          <input class="switch" type="checkbox" id="s-label">
+        </label>
+      </div>
+
+      <h3 class="overline settings__group">Dados</h3>
+      <p class="modal__text" id="s-storage"></p>
+      <div class="settings__data">
+        <button class="btn btn--quiet" type="button" id="s-export">
+          <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Exportar</span>
+        </button>
+        <button class="btn btn--quiet" type="button" id="s-import">
+          <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg><span>Importar</span>
+        </button>
+        <button class="btn btn--danger" type="button" id="s-clear">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Apagar todos os dados</span>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================ -->
+  <!-- Sobre e ajuda                                                 -->
+  <!-- ============================================================ -->
+  <dialog class="modal modal--wide" id="help-dialog" aria-labelledby="help-title">
+    <div class="modal__inner">
+      <header class="modal__head">
+        <h2 class="modal__title" id="help-title">Sobre a Ampulheta</h2>
+        <button class="icon-btn icon-btn--small" type="button" data-close aria-label="Fechar">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </header>
+
+      <div class="prose">
+        <p class="prose__lede">Uma ampulheta dá forma a um intervalo. A areia de cima é o que ainda falta; a de baixo, o que já passou.</p>
+
+        <h3>O que é um grão</h3>
+        <p>Cada ampulheta é dividida em uma quantidade fixa de grãos, escolhida pela duração: algumas centenas para intervalos de segundos, cerca de 50 mil para uma vida inteira. Todos os grãos valem o mesmo tempo — em <em>Detalhes</em> você vê quanto.</p>
+        <p>Um grão só cai quando a sua fração de tempo termina. Em uma ampulheta de 10 segundos a areia escorre sem parar; em uma de 94 anos, cada grão representa cerca de 16 horas e a ampulheta pode passar a tarde inteira imóvel. Isso não é defeito: uma ampulheta longa deve parecer longa.</p>
+
+        <h3>Como o tempo é calculado</h3>
+        <p>A ampulheta não conta segundos. Ela guarda apenas o início e o término e, a cada momento, compara com o relógio do seu dispositivo:</p>
+        <p class="prose__formula">progresso = (agora − início) ÷ (término − início)</p>
+        <p>A quantidade de areia embaixo é sempre proporcional a esse valor. O início pode estar no passado — “desde que comecei a faculdade” — e a ampulheta já aparece parcialmente escoada.</p>
+
+        <h3>Com o navegador fechado</h3>
+        <p>Nada precisa ficar rodando. Ao voltar — uma hora ou três anos depois —, o estado é recalculado e a areia aparece exatamente onde deveria estar, sem reproduzir o que aconteceu na sua ausência.</p>
+
+        <h3>Onde ficam os dados</h3>
+        <p>Somente neste navegador, neste dispositivo (IndexedDB). Outros navegadores ou aparelhos não os veem. Limpar os dados de navegação apaga as ampulhetas — por isso, exporte um backup de vez em quando.</p>
+
+        <h3>Exportar e importar</h3>
+        <p><strong>Exportar</strong> gera um arquivo <code>.json</code> com todas as ampulhetas, arquivadas inclusive, e as preferências. <strong>Importar</strong> lê esse arquivo e o valida antes de qualquer alteração: <em>mesclar</em> adiciona ao que já existe sem apagar nada; <em>substituir</em> troca tudo pelo conteúdo do arquivo.</p>
+
+        <h3>Privacidade</h3>
+        <p>Sem contas, sem rastreamento, sem servidor. Nenhuma informação das suas ampulhetas sai deste dispositivo. Depois de carregada, a aplicação funciona também sem internet.</p>
+
+        <h3>Atalhos</h3>
+        <dl class="shortcuts">
+          <div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Trocar de ampulheta</dd></div>
+          <div><dt><kbd>C</kbd></dt><dd>Modo contemplação</dd></div>
+          <div><dt><kbd>F</kbd></dt><dd>Tela cheia</dd></div>
+          <div><dt><kbd>I</kbd></dt><dd>Detalhes</dd></div>
+          <div><dt><kbd>M</kbd></dt><dd>Menu</dd></div>
+          <div><dt><kbd>N</kbd></dt><dd>Nova ampulheta</dd></div>
+          <div><dt><kbd>S</kbd></dt><dd>Som ligado/desligado</dd></div>
+          <div><dt><kbd>?</kbd></dt><dd>Esta ajuda</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Fechar painel ou sair da contemplação</dd></div>
+        </dl>
+        <p class="prose__small">No celular, deslize para os lados para trocar de ampulheta. Na contemplação, toque na tela para ver os controles.</p>
+
+        <p class="prose__sign">Desenvolvido por Filipe Santana · <span id="help-version"></span></p>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <noscript>
+    <p class="noscript">A Ampulheta precisa de JavaScript para medir o tempo.</p>
+  </noscript>
+
+  <script src="js/utils.js"></script>
+  <script src="js/time-engine.js"></script>
+  <script src="js/format.js"></script>
+  <script src="js/grain-engine.js"></script>
+  <script src="js/sand-geometry.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/import-export.js"></script>
+  <script src="js/hourglass-renderer.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/ui-dialogs.js"></script>
+  <script src="js/ui-form.js"></script>
+  <script src="js/ui-panels.js"></script>
+  <script src="js/ui-stage.js"></script>
+  <script src="js/ui-settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

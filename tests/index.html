@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Ampulheta — testes</title>
+  <style>
+    body { margin: 0; padding: 32px; background: #0b0b0c; color: #e9e5dd; font: 14px/1.5 system-ui, sans-serif; }
+    h1 { font-weight: 400; font-size: 20px; margin: 0 0 4px; }
+    p.summary { color: #9a948a; margin: 0 0 24px; }
+    li { padding: 3px 0; list-style: none; }
+    li.pass::before { content: "✓  "; color: #9fbf8f; }
+    li.fail { color: #e39b86; }
+    li.fail::before { content: "✗  "; }
+    ul { padding: 0; margin: 0; }
+    code { color: #cdb58c; }
+  </style>
+</head>
+<body>
+  <h1>Ampulheta — testes dos módulos de tempo, grãos, geometria e dados</h1>
+  <p class="summary" id="summary">Executando…</p>
+  <ul id="results"></ul>
+
+  <script src="../js/utils.js"></script>
+  <script src="../js/time-engine.js"></script>
+  <script src="../js/format.js"></script>
+  <script src="../js/grain-engine.js"></script>
+  <script src="../js/sand-geometry.js"></script>
+  <script src="../js/model.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/store.js"></script>
+  <script src="../js/import-export.js"></script>
+  <script>
+    'use strict';
+    (function () {
+      const A = window.Ampulheta;
+      const T = A.time;
+      const F = A.format;
+      const G = A.grains;
+      const results = [];
+
+      function test(name, fn) {
+        try {
+          fn();
+          results.push({ name, ok: true });
+        } catch (err) {
+          results.push({ name, ok: false, msg: err && err.message });
+        }
+      }
+      function eq(actual, expected, label) {
+        if (actual !== expected) throw new Error((label || '') + ' esperado ' + JSON.stringify(expected) + ', obtido ' + JSON.stringify(actual));
+      }
+      function ok(cond, label) {
+        if (!cond) throw new Error(label || 'condição falsa');
+      }
+      const local = (y, m, d, h, mi, s) => T.fromLocalParts(y, m, d, h || 0, mi || 0, s || 0);
+
+      /* Tempo --------------------------------------------------------- */
+      test('progresso = (agora − início) / (término − início)', () => {
+        const s = T.computeState({ start: 1000, end: 5000 }, 2000);
+        eq(s.progress, 0.25);
+        eq(s.remainingFraction, 0.75);
+        eq(s.status, 'running');
+      });
+      test('antes do início: pendente, progresso 0', () => {
+        const s = T.computeState({ start: 1000, end: 5000 }, 500);
+        eq(s.status, 'pending');
+        eq(s.progress, 0);
+      });
+      test('depois do fim: concluída, progresso 1', () => {
+        const s = T.computeState({ start: 1000, end: 5000 }, 9000);
+        eq(s.status, 'finished');
+        eq(s.progress, 1);
+      });
+      test('datas impossíveis são rejeitadas', () => {
+        ok(isNaN(local(2023, 2, 29)), '29/02/2023');
+        ok(!isNaN(local(2024, 2, 29)), '29/02/2024');
+        eq(T.parseDateTimeInputs('2023-02-31', '').ok, false);
+        eq(T.parseDateTimeInputs('10000-01-01', '').error, 'out-of-range');
+      });
+      test('anos 0001–0099 não viram 1900–1999', () => {
+        eq(new Date(local(50, 6, 1)).getFullYear(), 50);
+      });
+      test('hora vazia = 00:00 local', () => {
+        const r = T.parseDateTimeInputs('2030-05-17', '');
+        const d = new Date(r.ms);
+        eq(d.getHours(), 0);
+        eq(d.getDate(), 17);
+      });
+      test('somar meses respeita o fim do mês', () => {
+        const d = new Date(T.addMonths(local(2024, 1, 31, 10), 1));
+        eq(d.getMonth(), 1);
+        eq(d.getDate(), 29);
+        eq(d.getHours(), 10);
+      });
+      test('diferença de calendário: 94 anos exatos', () => {
+        const a = local(2026, 9, 30, 14, 32);
+        const diff = T.diffCalendar(a, T.addDuration(a, { years: 94 }));
+        eq(diff.years, 94);
+        eq(diff.months, 0);
+        eq(diff.days, 0);
+      });
+      test('diferença de calendário: 31/jan → 1/mar', () => {
+        const diff = T.diffCalendar(local(2024, 1, 31), local(2024, 3, 1));
+        eq(diff.months, 1);
+        eq(diff.days, 1);
+      });
+
+      /* Formatação ---------------------------------------------------- */
+      test('intervalos em linguagem natural', () => {
+        eq(F.formatDuration(42000), '42 segundos');
+        eq(F.formatDuration(12 * 60000 + 8000), '12 minutos e 8 segundos');
+        eq(F.formatDuration(4 * 3600000 + 21 * 60000), '4 horas e 21 minutos');
+        eq(F.formatDuration(12 * 86400000), '12 dias');
+      });
+      test('forma compacta do valor de um grão', () => {
+        eq(F.formatDurationCompact(59318 * 1000), '16h 29min');
+        eq(F.formatDurationCompact(33), '33ms');
+        eq(F.formatDurationCompact(4200), '4,2s');
+      });
+      test('percentual com precisão adaptativa', () => {
+        eq(F.formatPercent(0.375), '37,50%');
+        eq(F.formatPercent(3.82e-9), '0,000000382%');
+        ok(F.formatPercent(1 - 1e-9) !== '100%', 'nunca 100% antes do fim');
+        eq(F.formatPercent(0), '0%');
+        eq(F.formatPercent(1), '100%');
+      });
+
+      /* Grain Engine -------------------------------------------------- */
+      test('quantidade de grãos cresce com a duração, dentro dos limites', () => {
+        let prev = 0;
+        for (const ms of [1e3, 1e4, 6e5, 3.6e6, 8.64e7, 3.15e10, 2.97e12, 3e13]) {
+          const n = G.grainCount(ms);
+          ok(n >= G.GRAIN_MIN && n <= G.GRAIN_MAX, 'limites');
+          ok(n >= prev, 'monotônica');
+          prev = n;
+        }
+      });
+      test('94 anos → 50 000 grãos, cerca de 16h 29min cada', () => {
+        const m = G.createModel({ start: 0, end: 94 * T.AVG_YEAR });
+        eq(m.count, 50000);
+        eq(F.formatDurationCompact(m.grainMs), '16h 29min');
+      });
+      test('grãos caídos e instante do próximo grão', () => {
+        const m = G.createModel({ start: 0, end: 3600000 });
+        eq(G.fallenAt(m, 0), 0);
+        eq(G.fallenAt(m, 3600000), m.count);
+        const k = G.fallenAt(m, 1800000);
+        ok(G.releaseTime(m, k) <= 1800000 && G.releaseTime(m, k + 1) > 1800000, 'intervalo do grão');
+      });
+
+      /* Geometria ----------------------------------------------------- */
+      test('massa de areia: conservação e monotonicidade', () => {
+        const glass = A.geometry.createGlass();
+        const sand = A.geometry.createSandModel(glass);
+        let lastTop = Infinity;
+        let lastBottom = -Infinity;
+        for (let i = 0; i <= 20; i++) {
+          const p = i / 20;
+          const top = sand.topState(1 - p);
+          const bottom = sand.bottomState(p);
+          const tv = top.empty ? 0 : sand.topVolume(top.level);
+          const bv = bottom.empty ? 0 : sand.bottomVolume(bottom.apex);
+          ok(Math.abs(tv + bv - sand.V0) < sand.V0 * 1e-3, 'conservação em p=' + p);
+          ok(top.level <= lastTop + 1e-9 && bottom.apex >= lastBottom - 1e-9, 'monotonicidade em p=' + p);
+          lastTop = top.level;
+          lastBottom = bottom.apex;
+        }
+        ok(sand.bottomState(1).apex < 0.95, 'a pilha final cabe abaixo do gargalo');
+      });
+
+      /* Dados --------------------------------------------------------- */
+      test('validação de registros', () => {
+        eq(A.model.normalize({ id: 'a', name: '  x  ', start: 0, end: 5000 }).value.name, 'x');
+        eq(A.model.normalize({ id: 'a', name: '', start: 0, end: 5000 }).ok, false);
+        eq(A.model.normalize({ id: 'a', name: 'x', start: 5000, end: 0 }).ok, false);
+        eq(A.model.normalize({ id: 'a', name: 'x', start: 'ontem', end: 5000 }).ok, false);
+        eq(A.model.normalize({ id: 'a', name: 'x', start: '2020-01-01T00:00:00Z', end: '2021-01-01T00:00:00Z', tone: 'neon' }).value.tone, 'areia');
+        ok(A.model.normalize({ id: '<script>', name: 'x', start: 0, end: 5000 }).value.id !== '<script>', 'id inseguro');
+      });
+      test('backup: JSON inválido, formato e versão', () => {
+        eq(A.backup.parseBackup('{').error, 'json');
+        eq(A.backup.parseBackup('{"format":"outro","version":1,"hourglasses":[]}').error, 'format');
+        eq(A.backup.parseBackup('{"format":"hourglass-backup","version":2,"hourglasses":[]}').error, 'version-newer');
+        eq(A.backup.parseBackup('{"format":"hourglass-backup","version":"1","hourglasses":[]}').error, 'version-invalid');
+      });
+      test('backup: registros corrompidos e IDs duplicados', () => {
+        const rec = { id: 'x1', name: 'A', start: '2020-01-01T00:00:00.000Z', end: '2030-01-01T00:00:00.000Z' };
+        const parsed = A.backup.parseBackup(JSON.stringify({
+          format: 'hourglass-backup', version: 1,
+          hourglasses: [rec, rec, { id: 'x2', name: 'B', start: 'x', end: 'y' }, 42]
+        }));
+        eq(parsed.ok, true);
+        eq(parsed.records.length, 1);
+        eq(parsed.stats.duplicates, 1);
+        eq(parsed.stats.invalid, 2);
+        eq(parsed.records[0].start, Date.UTC(2020, 0, 1));
+      });
+      test('backup: instantes preservados (ISO UTC ida e volta)', () => {
+        const hg = A.model.create({ name: 'Vida', start: Date.UTC(1995, 2, 10, 3), end: Date.UTC(2075, 2, 10, 3) });
+        const back = A.model.normalize(JSON.parse(JSON.stringify(A.model.toBackup(hg))));
+        eq(back.value.start, hg.start);
+        eq(back.value.end, hg.end);
+      });
+
+      /* Resultado ----------------------------------------------------- */
+      const list = document.getElementById('results');
+      let failed = 0;
+      for (const r of results) {
+        const li = document.createElement('li');
+        li.className = r.ok ? 'pass' : 'fail';
+        li.textContent = r.name + (r.ok ? '' : ' — ' + r.msg);
+        list.appendChild(li);
+        if (!r.ok) failed++;
+      }
+      const summary = document.getElementById('summary');
+      summary.textContent = failed
+        ? failed + ' de ' + results.length + ' testes falharam.'
+        : 'Todos os ' + results.length + ' testes passaram.';
+      document.title = (failed ? '✗ ' : '✓ ') + document.title;
+      window.__testResults = { total: results.length, failed, results };
+    })();
+  </script>
+</body>
+</html>
