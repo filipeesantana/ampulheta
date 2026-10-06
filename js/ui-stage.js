@@ -83,8 +83,11 @@
     const small = w <= 600;
     const low = h <= 620;
     if (contemplating) {
+      // Em baixo cabem o nome e, quando os controles reaparecem, a linha de
+      // estado com "Reiniciar" — sem encostar na ampulheta.
       const m = Math.max(20, Math.round(h * 0.04));
-      return { top: m, bottom: m + 36, side: small ? 12 : 40 };
+      const bottom = h <= 460 ? m + 36 : low ? m + 62 : Math.max(m + 68, 104);
+      return { top: m, bottom, side: small ? 12 : 40 };
     }
     if (mode === 'intro') {
       if (h <= 460) return { top: 48, bottom: 150, side: 16 };
@@ -100,14 +103,12 @@
   }
 
   function applyLayout() {
-    if (flip && flip.isRunning()) {
-      flip.settle().then(applyLayout);
-      return;
-    }
     const stage = qs('#stage');
     const w = stage.clientWidth;
     const h = stage.clientHeight;
     scene.resize(w, h, root.devicePixelRatio || 1, insetsFor(w, h));
+    // Uma virada em andamento continua do mesmo ponto no novo enquadramento.
+    if (flip && flip.isRunning()) flip.relayout();
   }
 
   function scheduleResize() {
@@ -232,6 +233,8 @@
   function statusFor(hg) {
     const s = T.computeState(hg);
     if (s.status === 'finished') return { text: 'Terminou.', restart: true };
+    // Recém-reiniciada: o início é o instante em que ela pousa — não é uma espera.
+    if (s.status === 'pending' && s.untilStart <= T.STARTING_WINDOW) return hg.archived ? { text: 'Arquivada.', restart: false } : null;
     if (s.status === 'pending') return { text: 'Começa em ' + F.formatDateLong(hg.start) + '.', restart: false };
     if (hg.archived) return { text: 'Arquivada.', restart: false };
     return null;
@@ -267,7 +270,8 @@
     if (!hg || mode === 'intro') return;
     const s = T.computeState(hg);
     let text = hg.name + ': ';
-    if (s.status === 'pending') text += 'ainda não começou; começa em ' + F.formatDateTime(hg.start) + '.';
+    const waiting = s.status === 'pending' && s.untilStart > T.STARTING_WINDOW;
+    if (waiting) text += 'ainda não começou; começa em ' + F.formatDateTime(hg.start) + '.';
     else if (s.status === 'finished') text += 'terminou em ' + F.formatDateTime(hg.end) + '.';
     else text += F.formatPercentShort(s.progress) + ' do tempo já passou; termina em ' + F.formatDateTime(hg.end) + '.';
     if (text !== lastAria) {
@@ -280,17 +284,23 @@
   /* Reinício com virada                                                  */
   /* ------------------------------------------------------------------ */
 
-  /** Vira a ampulheta e grava o reinício (mesma duração, começando agora). */
+  /**
+   * Reinicia a ampulheta: grava o novo intervalo (mesma duração, novo início)
+   * e só então exibe a virada. Funciona da mesma forma na tela normal, em tela
+   * cheia e na contemplação — o estado vem sempre do registro gravado.
+   */
   async function restart(hourglass) {
     if (!hourglass || flip.isRunning()) return null;
     if (contemplating) showControlsBriefly();
+    const id = hourglass.id;
     const record = await flip.run(hourglass, {
       reducedMotion: reducedMotion(),
-      commit: () => A.store.restart(hourglass.id)
+      commit: (startAt) => A.store.restart(id, startAt),
+      latest: () => A.store.get(id)
     });
     const current = A.app.current();
-    if (current && record && current.id === record.id) {
-      updateDock(record);
+    if (current && current.id === id) {
+      updateDock(current);
       updateAria();
     }
     return record;
@@ -333,16 +343,43 @@
   /* Contemplação                                                         */
   /* ------------------------------------------------------------------ */
 
+  const CONTROLS_SELECTOR = '.topbar, .dock';
+  const IDLE_MS = 3200;
+  let overControls = false;
+
+  /** Há um controle sob o cursor ou com foco de teclado? Então não é hora de esconder. */
+  function controlsInUse() {
+    if (overControls) return true;
+    const el = document.activeElement;
+    if (!el || el === document.body || !el.closest || !el.closest(CONTROLS_SELECTOR)) return false;
+    try {
+      return el.matches(':focus-visible');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function armIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimer = 0;
+      if (!contemplating) return;
+      if (A.dialogs.anyOpen()) return; // reaparece ao fechar (onDialogChange)
+      if (flip.isRunning() || controlsInUse()) {
+        armIdleTimer();
+        return;
+      }
+      document.body.classList.remove('show-controls');
+      document.body.classList.add('is-idle');
+    }, IDLE_MS);
+  }
+
+  /** Mostra os controles da contemplação; eles se recolhem sozinhos após um tempo parado. */
   function showControlsBriefly() {
     if (!contemplating) return;
     document.body.classList.add('show-controls');
     document.body.classList.remove('is-idle');
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      if (A.dialogs.anyOpen()) return;
-      document.body.classList.remove('show-controls');
-      document.body.classList.add('is-idle');
-    }, 2800);
+    armIdleTimer();
   }
 
   function setupIdle() {
@@ -351,7 +388,10 @@
       'pointermove',
       (ev) => {
         if (!contemplating) return;
-        if (ev.pointerType === 'mouse' && Math.abs(ev.movementX || 0) + Math.abs(ev.movementY || 0) < 2) return;
+        if (ev.pointerType === 'mouse') {
+          overControls = !!(ev.target && ev.target.closest && ev.target.closest(CONTROLS_SELECTOR));
+          if (Math.abs(ev.movementX || 0) + Math.abs(ev.movementY || 0) < 2) return;
+        }
         const now = performance.now();
         if (now - lastMove < 150) return;
         lastMove = now;
@@ -359,13 +399,15 @@
       },
       { passive: true }
     );
-    document.addEventListener(
-      'pointerdown',
-      () => {
-        if (contemplating) showControlsBriefly();
-      },
-      { passive: true }
-    );
+    document.documentElement.addEventListener('pointerleave', () => (overControls = false), { passive: true });
+    const reveal = () => {
+      if (contemplating) showControlsBriefly();
+    };
+    // Qualquer interação traz os controles de volta — nunca ficam "presentes, mas inalcançáveis".
+    document.addEventListener('pointerdown', reveal, { passive: true, capture: true });
+    document.addEventListener('keydown', reveal, { capture: true });
+    document.addEventListener('focusin', reveal);
+    document.addEventListener('wheel', reveal, { passive: true });
   }
 
   function canFullscreen() {
@@ -377,13 +419,22 @@
     return !!(document.fullscreenElement || document.webkitFullscreenElement);
   }
 
-  function requestFullscreen() {
+  /**
+   * Pede tela cheia para o documento inteiro: palco, controles, painéis, menus,
+   * confirmações e avisos ficam todos dentro da raiz e continuam utilizáveis.
+   * Se o navegador recusar (agora ou depois), `onFail` é chamado.
+   */
+  function requestFullscreen(onFail) {
     const d = document.documentElement;
+    const fail = () => {
+      if (typeof onFail === 'function') onFail();
+    };
     try {
       const p = d.requestFullscreen ? d.requestFullscreen({ navigationUI: 'hide' }) : d.webkitRequestFullscreen();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      if (p && typeof p.catch === 'function') p.catch(fail);
       return true;
     } catch (e) {
+      fail();
       return false;
     }
   }
@@ -439,7 +490,7 @@
     setContemplateButton(true);
     relayoutAnimated();
     if (A.storage.settings.get('contemplationFullscreen') && canFullscreen() && !isFullscreen()) {
-      enteredFullscreen = requestFullscreen();
+      enteredFullscreen = requestFullscreen(() => (enteredFullscreen = false));
     }
     requestWakeLock();
     showControlsBriefly();
@@ -448,7 +499,9 @@
   function exitContemplation() {
     if (!contemplating) return;
     contemplating = false;
+    overControls = false;
     clearTimeout(idleTimer);
+    idleTimer = 0;
     document.body.classList.remove('is-contemplating', 'show-controls', 'is-idle');
     setContemplateButton(false);
     relayoutAnimated();
@@ -462,11 +515,18 @@
     else enterContemplation();
   }
 
+  /**
+   * A tela cheia pode mudar por fora da interface (Esc, F11, gestos do sistema):
+   * a interface se sincroniza sempre a partir deste evento, nunca por suposição.
+   */
   function onFullscreenChange() {
-    if (!isFullscreen() && contemplating && enteredFullscreen) {
+    const on = isFullscreen();
+    if (!on && contemplating && enteredFullscreen) {
       enteredFullscreen = false;
       exitContemplation();
     }
+    if (!on) enteredFullscreen = false;
+    if (contemplating) showControlsBriefly();
     scheduleResize();
   }
 
@@ -497,6 +557,7 @@
     exitContemplation,
     toggleFullscreen,
     isContemplating: () => contemplating,
+    isFullscreen,
     showControlsBriefly,
     onDialogChange,
     setReducedMotion,

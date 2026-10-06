@@ -16,11 +16,11 @@
   <link rel="icon" href="assets/icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="css/base.css?v=2.0.0">
-  <link rel="stylesheet" href="css/layout.css?v=2.0.0">
-  <link rel="stylesheet" href="css/components.css?v=2.0.0">
-  <link rel="stylesheet" href="css/hourglass.css?v=2.0.0">
-  <link rel="stylesheet" href="css/responsive.css?v=2.0.0">
+  <link rel="stylesheet" href="css/base.css?v=2.1.0">
+  <link rel="stylesheet" href="css/layout.css?v=2.1.0">
+  <link rel="stylesheet" href="css/components.css?v=2.1.0">
+  <link rel="stylesheet" href="css/hourglass.css?v=2.1.0">
+  <link rel="stylesheet" href="css/responsive.css?v=2.1.0">
 </head>
 <body class="is-booting">
 
@@ -229,41 +229,41 @@
       <h2 class="info__title" id="info-title"></h2>
       <p class="info__status" id="info-status"></p>
 
+      <section class="info__block info__block--lead" aria-labelledby="info-remaining-title">
+        <h3 class="section-label" id="info-remaining-title">Tempo restante</h3>
+        <div class="countdown" id="info-countdown" role="group" aria-label="Tempo restante"></div>
+        <p class="info__done" id="info-done" hidden>Terminou</p>
+        <p class="info__note" id="info-remaining-note"></p>
+      </section>
+
       <section class="info__block" aria-labelledby="info-progress-title">
         <h3 class="section-label" id="info-progress-title">Progresso</h3>
-        <p class="info__hero"><span class="num" id="info-pct"></span> <span class="info__hero-label">transcorrido</span></p>
+        <p class="info__figure"><span class="num" id="info-pct"></span> <span class="info__figure-label">do tempo já passou</span></p>
         <div class="info__bar" aria-hidden="true"><span class="info__bar-fill" id="info-bar"></span></div>
         <dl class="info__list">
-          <div class="info__row"><dt>Restante</dt><dd class="num" id="info-pct-rest"></dd></div>
+          <div class="info__row"><dt>Tempo decorrido</dt><dd class="num" id="info-elapsed"></dd></div>
+          <div class="info__row"><dt>Ainda falta</dt><dd class="num" id="info-pct-rest"></dd></div>
         </dl>
       </section>
 
-      <section class="info__block" aria-labelledby="info-time-title">
-        <h3 class="section-label" id="info-time-title">Tempo</h3>
+      <section class="info__block" aria-labelledby="info-period-title">
+        <h3 class="section-label" id="info-period-title">Período</h3>
         <dl class="info__list">
-          <div class="info__row"><dt>Decorrido</dt><dd id="info-elapsed"></dd></div>
-          <div class="info__row"><dt>Restante</dt><dd id="info-remaining"></dd></div>
-          <div class="info__row"><dt>Duração total</dt><dd id="info-duration"></dd></div>
-        </dl>
-      </section>
-
-      <section class="info__block" aria-labelledby="info-dates-title">
-        <h3 class="section-label" id="info-dates-title">Datas</h3>
-        <dl class="info__list">
-          <div class="info__row"><dt>Início</dt><dd id="info-start"></dd></div>
-          <div class="info__row"><dt>Término</dt><dd id="info-end"></dd></div>
+          <div class="info__row"><dt>Início</dt><dd class="num" id="info-start"></dd></div>
+          <div class="info__row"><dt>Término</dt><dd class="num" id="info-end"></dd></div>
+          <div class="info__row"><dt>Duração total</dt><dd class="num" id="info-duration"></dd></div>
         </dl>
         <p class="info__note" id="info-tz"></p>
       </section>
 
       <section class="info__block" aria-labelledby="info-grains-title">
-        <h3 class="section-label" id="info-grains-title">Grãos</h3>
-        <p class="info__lede" id="info-grain"></p>
+        <h3 class="section-label" id="info-grains-title">Areia</h3>
         <dl class="info__list">
-          <div class="info__row"><dt>Total</dt><dd class="num" id="info-grains"></dd></div>
+          <div class="info__row"><dt>Cada grão equivale a</dt><dd class="num" id="info-grain"></dd></div>
+          <div class="info__row"><dt>Grãos no total</dt><dd class="num" id="info-grains"></dd></div>
           <div class="info__row"><dt>Já caíram</dt><dd class="num" id="info-fallen"></dd></div>
-          <div class="info__row"><dt>Restam</dt><dd class="num" id="info-left"></dd></div>
-          <div class="info__row"><dt>Próximo grão</dt><dd id="info-next"></dd></div>
+          <div class="info__row"><dt>Ainda em cima</dt><dd class="num" id="info-left"></dd></div>
+          <div class="info__row"><dt>Próximo grão</dt><dd class="num" id="info-next"></dd></div>
         </dl>
       </section>
 
@@ -497,7 +497,8 @@
           <li><strong>Criar:</strong> botão <em>Nova ampulheta</em>, no alto da tela. Escolha uma duração (por exemplo, 30 minutos) ou duas datas.</li>
           <li><strong>Trocar:</strong> setas ao lado do nome, teclas <kbd>←</kbd> <kbd>→</kbd> ou deslizando o dedo. Toque no nome para ver a lista.</li>
           <li><strong>Reiniciar, editar, duplicar, arquivar, excluir:</strong> botão <em>Ações</em> (<span class="prose__glyph" aria-hidden="true">•••</span>) no alto.</li>
-          <li><strong>Informações:</strong> botão <span class="prose__glyph" aria-hidden="true">ⓘ</span> — percentuais, datas e grãos.</li>
+          <li><strong>Informações:</strong> botão <span class="prose__glyph" aria-hidden="true">ⓘ</span> — quanto tempo falta (em anos, meses, semanas, dias, horas, minutos e segundos), o progresso, o período e a areia.</li>
+          <li><strong>Contemplação e tela cheia:</strong> os controles se recolhem; mova o mouse, toque na tela ou pressione uma tecla e eles voltam.</li>
         </ul>
 
         <h3>O que é um grão</h3>
@@ -509,7 +510,7 @@
         <p>O início pode estar no passado — a ampulheta já aparece parcialmente escoada. Com o navegador fechado nada precisa ficar rodando: ao voltar, a areia aparece exatamente onde deveria estar.</p>
 
         <h3>Reiniciar</h3>
-        <p>Reiniciar vira a ampulheta e começa de novo agora, com a mesma duração de antes — 30 minutos continuam sendo 30 minutos; 1 mês continua sendo 1 mês de calendário.</p>
+        <p>Reiniciar vira a ampulheta e começa de novo, com a mesma duração de antes — 30 minutos continuam sendo 30 minutos; 1 mês continua sendo 1 mês de calendário. A contagem recomeça no instante em que ela pousa de pé. Funciona do mesmo jeito na tela normal, em tela cheia e no modo contemplação: use <em>Ações</em>, o botão <em>Reiniciar</em> que aparece quando ela termina, ou a tecla <kbd>R</kbd>.</p>
 
         <h3>Seus dados</h3>
         <p>Tudo fica somente neste navegador, neste dispositivo. Nada é enviado a servidor algum; não há contas nem rastreamento. Limpar os dados de navegação apaga as ampulhetas — use <em>Exportar backup</em> de vez em quando. <em>Importar backup</em> valida o arquivo antes de qualquer alteração e permite adicionar às atuais ou substituir tudo. Depois de carregada, a aplicação funciona também sem internet.</p>
@@ -520,6 +521,7 @@
           <div><dt><kbd>L</kbd></dt><dd>Lista de ampulhetas</dd></div>
           <div><dt><kbd>N</kbd></dt><dd>Nova ampulheta</dd></div>
           <div><dt><kbd>I</kbd></dt><dd>Informações</dd></div>
+          <div><dt><kbd>R</kbd></dt><dd>Reiniciar a ampulheta</dd></div>
           <div><dt><kbd>C</kbd></dt><dd>Modo contemplação</dd></div>
           <div><dt><kbd>F</kbd></dt><dd>Tela cheia</dd></div>
           <div><dt><kbd>M</kbd></dt><dd>Menu</dd></div>
@@ -538,24 +540,24 @@
     <p class="noscript">A Ampulheta precisa de JavaScript para medir o tempo.</p>
   </noscript>
 
-  <script src="js/utils.js?v=2.0.0"></script>
-  <script src="js/time-engine.js?v=2.0.0"></script>
-  <script src="js/format.js?v=2.0.0"></script>
-  <script src="js/grain-engine.js?v=2.0.0"></script>
-  <script src="js/sand-geometry.js?v=2.0.0"></script>
-  <script src="js/model.js?v=2.0.0"></script>
-  <script src="js/storage.js?v=2.0.0"></script>
-  <script src="js/store.js?v=2.0.0"></script>
-  <script src="js/import-export.js?v=2.0.0"></script>
-  <script src="js/hourglass-renderer.js?v=2.0.0"></script>
-  <script src="js/scene.js?v=2.0.0"></script>
-  <script src="js/flip.js?v=2.0.0"></script>
-  <script src="js/sound.js?v=2.0.0"></script>
-  <script src="js/ui-dialogs.js?v=2.0.0"></script>
-  <script src="js/ui-form.js?v=2.0.0"></script>
-  <script src="js/ui-panels.js?v=2.0.0"></script>
-  <script src="js/ui-stage.js?v=2.0.0"></script>
-  <script src="js/ui-settings.js?v=2.0.0"></script>
-  <script src="js/app.js?v=2.0.0"></script>
+  <script src="js/utils.js?v=2.1.0"></script>
+  <script src="js/time-engine.js?v=2.1.0"></script>
+  <script src="js/format.js?v=2.1.0"></script>
+  <script src="js/grain-engine.js?v=2.1.0"></script>
+  <script src="js/sand-geometry.js?v=2.1.0"></script>
+  <script src="js/model.js?v=2.1.0"></script>
+  <script src="js/storage.js?v=2.1.0"></script>
+  <script src="js/store.js?v=2.1.0"></script>
+  <script src="js/import-export.js?v=2.1.0"></script>
+  <script src="js/hourglass-renderer.js?v=2.1.0"></script>
+  <script src="js/scene.js?v=2.1.0"></script>
+  <script src="js/flip.js?v=2.1.0"></script>
+  <script src="js/sound.js?v=2.1.0"></script>
+  <script src="js/ui-dialogs.js?v=2.1.0"></script>
+  <script src="js/ui-form.js?v=2.1.0"></script>
+  <script src="js/ui-panels.js?v=2.1.0"></script>
+  <script src="js/ui-stage.js?v=2.1.0"></script>
+  <script src="js/ui-settings.js?v=2.1.0"></script>
+  <script src="js/app.js?v=2.1.0"></script>
 </body>
 </html>

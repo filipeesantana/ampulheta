@@ -243,6 +243,84 @@
     };
   }
 
+  /**
+   * Janela (ms) em que um início no futuro próximo é tratado como "começando":
+   * um reinício grava o início no instante em que a virada termina.
+   */
+  const STARTING_WINDOW = 5 * SECOND;
+
+  /** Unidades da contagem regressiva, da maior para a menor. */
+  const COUNTDOWN_KEYS = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds'];
+
+  function zeroCountdown() {
+    return { years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0, seconds: 0, totalMs: 0, wholeSeconds: 0 };
+  }
+
+  /**
+   * Decompõe o tempo entre `from` e `to` em anos, meses, semanas, dias, horas,
+   * minutos e segundos, sem contar nada duas vezes.
+   *
+   * Anos e meses seguem o calendário local (meses de 28 a 31 dias, anos
+   * bissextos); semanas e dias são dias locais; o resto é tempo absoluto.
+   * Somar as partes de volta (addDuration) reconstrói exatamente o intervalo.
+   *
+   * Os segundos são arredondados para cima, como em toda contagem regressiva:
+   * mostra "10 segundos" no instante inicial e só chega a zero quando o tempo
+   * de fato acabou. Nunca devolve valores negativos.
+   */
+  function decomposeRemaining(from, to) {
+    const totalMs = to - from;
+    if (!(totalMs > 0)) return zeroCountdown();
+    const wholeSeconds = Math.ceil(totalMs / SECOND);
+    const anchor = to - wholeSeconds * SECOND;
+    const d = diffCalendar(anchor, to);
+    return {
+      years: d.years,
+      months: d.months,
+      weeks: Math.floor(d.days / 7),
+      days: d.days % 7,
+      hours: d.hours,
+      minutes: d.minutes,
+      seconds: d.seconds,
+      totalMs,
+      wholeSeconds
+    };
+  }
+
+  /** Converte as partes da contagem em partes de duração (semanas viram dias). */
+  function countdownToDuration(parts) {
+    return {
+      years: parts.years || 0,
+      months: parts.months || 0,
+      days: (parts.weeks || 0) * 7 + (parts.days || 0),
+      hours: parts.hours || 0,
+      minutes: parts.minutes || 0,
+      seconds: parts.seconds || 0
+    };
+  }
+
+  /**
+   * Contagem regressiva de uma ampulheta num instante — a única fonte do
+   * "tempo restante" na interface.
+   *   - em andamento: de agora até o término;
+   *   - antes do início: a duração inteira (do início ao término);
+   *   - terminada: zero.
+   * `nextChangeIn` é quanto falta (ms) para o valor exibido mudar.
+   */
+  function countdown(hourglass, at) {
+    const state = computeState(hourglass, at);
+    const from = state.status === 'pending' ? state.start : state.now;
+    const parts = state.status === 'finished' ? zeroCountdown() : decomposeRemaining(from, state.end);
+    let nextChangeIn = Infinity;
+    if (state.status === 'running') {
+      const rest = state.end - state.now;
+      nextChangeIn = rest % SECOND || SECOND;
+    } else if (state.status === 'pending') {
+      nextChangeIn = state.untilStart;
+    }
+    return { status: state.status, remaining: state.remaining, parts, nextChangeIn, state };
+  }
+
   /** Decompõe um número de milissegundos em unidades médias (não ancoradas). */
   function splitDuration(ms) {
     let rest = Math.max(0, ms);
@@ -293,6 +371,8 @@
     MIN_TIMESTAMP,
     MAX_TIMESTAMP,
     MIN_DURATION,
+    STARTING_WINDOW,
+    COUNTDOWN_KEYS,
     now,
     isValidTimestamp,
     daysInMonth,
@@ -306,6 +386,9 @@
     addDuration,
     diffCalendar,
     computeState,
+    decomposeRemaining,
+    countdownToDuration,
+    countdown,
     splitDuration,
     timeZoneName,
     timeZoneLabel

@@ -18,7 +18,7 @@
   </style>
 </head>
 <body>
-  <h1>Ampulheta — testes de tempo, grãos, geometria, reinício, migração e dados</h1>
+  <h1>Ampulheta — testes de tempo, tempo restante, grãos, geometria, reinício, migração e dados</h1>
   <p class="summary" id="summary">Executando…</p>
   <ul id="results"></ul>
 
@@ -243,7 +243,7 @@
 
       /* Migração ------------------------------------------------------- */
       test('registro da versão 1 é migrado (schemaVersion, mode, duration)', () => {
-        const res = A.model.normalize({ id: 'v1', name: 'Vida', start: Date.UTC(1995, 2, 10, 3), end: Date.UTC(2089, 2, 10, 3), tone: 'areia', archived: false, order: 0 });
+        const res = A.model.normalize({ id: 'v1', name: 'Vida', start: local(1995, 3, 10, 3), end: local(2089, 3, 10, 3), tone: 'areia', archived: false, order: 0 });
         eq(res.ok, true);
         eq(res.migrated, true);
         eq(res.value.schemaVersion, 2);
@@ -299,6 +299,136 @@
           ok(Math.abs(m.grainMs * m.count - ms) < 1e-3 * ms, 'soma dos grãos = duração');
           eq(G.fallenAt(m, ms / 2), Math.floor(m.count / 2));
         }
+      });
+
+      /* Tempo restante (contagem regressiva) -------------------------- */
+      const KEYS = T.COUNTDOWN_KEYS;
+      const only = (parts, expected) => {
+        for (const k of KEYS) eq(parts[k], expected[k] || 0, k + ':');
+      };
+      const recompose = (from, to) => {
+        const p = T.decomposeRemaining(from, to);
+        const anchor = to - p.wholeSeconds * T.SECOND;
+        return { p, back: T.addDuration(anchor, T.countdownToDuration(p)), anchor };
+      };
+      test('restante: durações curtas (10 s, 1 min, 2 min, 5 min, 1 h)', () => {
+        const t = local(2026, 5, 12, 9, 30, 0);
+        only(T.decomposeRemaining(t, t + 10 * T.SECOND), { seconds: 10 });
+        only(T.decomposeRemaining(t, t + T.MINUTE), { minutes: 1 });
+        only(T.decomposeRemaining(t, t + 2 * T.MINUTE), { minutes: 2 });
+        only(T.decomposeRemaining(t, t + 5 * T.MINUTE), { minutes: 5 });
+        only(T.decomposeRemaining(t, t + T.HOUR), { hours: 1 });
+        only(T.decomposeRemaining(t + 1, t + T.HOUR), { hours: 1 });
+        only(T.decomposeRemaining(t + 1000, t + T.HOUR), { minutes: 59, seconds: 59 });
+      });
+      test('restante: segundos arredondam para cima e zeram só no fim', () => {
+        const end = local(2026, 5, 12, 9, 30, 10);
+        only(T.decomposeRemaining(end - 9300, end), { seconds: 10 });
+        only(T.decomposeRemaining(end - 9000, end), { seconds: 9 });
+        only(T.decomposeRemaining(end - 1, end), { seconds: 1 });
+        only(T.decomposeRemaining(end, end), {});
+        eq(T.decomposeRemaining(end, end).totalMs, 0);
+      });
+      test('restante: nunca negativo depois do fim', () => {
+        const end = local(2026, 5, 12, 9, 30, 10);
+        const p = T.decomposeRemaining(end + 5 * T.DAY, end);
+        only(p, {});
+        eq(p.totalMs, 0);
+        const c = T.countdown({ start: end - 60000, end }, end + 123456);
+        eq(c.status, 'finished');
+        eq(c.remaining, 0);
+        only(c.parts, {});
+        eq(F.countdownUnits(c.parts).length, 0);
+      });
+      test('restante: dias viram semanas + dias, sem contar duas vezes', () => {
+        const t = local(2026, 5, 12, 9, 30, 0);
+        only(T.decomposeRemaining(t, T.addDays(t, 3)), { days: 3 });
+        only(T.decomposeRemaining(t, T.addDays(t, 7)), { weeks: 1 });
+        only(T.decomposeRemaining(t, T.addDays(t, 10)), { weeks: 1, days: 3 });
+        only(T.decomposeRemaining(t, T.addDays(t, 27) + 5 * T.HOUR + 7 * T.SECOND), { weeks: 3, days: 6, hours: 5, seconds: 7 });
+      });
+      test('restante: meses de calendário (28, 29, 30 e 31 dias)', () => {
+        only(T.decomposeRemaining(local(2026, 1, 15, 8), local(2026, 3, 15, 8)), { months: 2 });
+        only(T.decomposeRemaining(local(2023, 2, 1), local(2023, 3, 1)), { months: 1 });
+        only(T.decomposeRemaining(local(2024, 2, 1), local(2024, 3, 1)), { months: 1 });
+        only(T.decomposeRemaining(local(2026, 4, 1), local(2026, 5, 1)), { months: 1 });
+        only(T.decomposeRemaining(local(2026, 7, 1), local(2026, 8, 1)), { months: 1 });
+        // Mesmas datas, fevereiro comum × bissexto: 27 dias × 28 dias.
+        only(T.decomposeRemaining(local(2023, 2, 10), local(2023, 3, 9)), { weeks: 3, days: 6 });
+        only(T.decomposeRemaining(local(2024, 2, 10), local(2024, 3, 9)), { weeks: 4 });
+        // 29 de fevereiro existe só no ano bissexto.
+        only(T.decomposeRemaining(local(2024, 2, 29, 12), local(2024, 3, 29, 12)), { months: 1 });
+        only(T.decomposeRemaining(local(2024, 2, 28), local(2024, 3, 1)), { days: 2 });
+        only(T.decomposeRemaining(local(2023, 2, 28), local(2023, 3, 1)), { days: 1 });
+      });
+      test('restante: virada de ano (dezembro → janeiro)', () => {
+        only(T.decomposeRemaining(local(2026, 12, 20, 18), local(2027, 1, 5, 18)), { weeks: 2, days: 2 });
+        only(T.decomposeRemaining(local(2026, 12, 31, 23, 59, 50), local(2027, 1, 1, 0, 0, 0)), { seconds: 10 });
+        only(T.decomposeRemaining(local(2026, 11, 30, 10), local(2027, 2, 27, 10)), { months: 2, weeks: 4 });
+        // Fim de mês: 30 de novembro + 3 meses = 28 de fevereiro (o dia é limitado ao mês).
+        only(T.decomposeRemaining(local(2026, 11, 30, 10), local(2027, 2, 28, 10)), { months: 3 });
+      });
+      test('restante: anos (5 anos, 94 anos, com bissextos no caminho)', () => {
+        only(T.decomposeRemaining(local(2026, 10, 5, 14, 32), local(2031, 10, 5, 14, 32)), { years: 5 });
+        only(T.decomposeRemaining(local(2026, 10, 5, 14, 32), local(2120, 10, 5, 14, 32)), { years: 94 });
+        only(T.decomposeRemaining(local(2026, 10, 5, 14, 32, 1), local(2120, 10, 5, 14, 32)), { years: 93, months: 11, weeks: 4, days: 1, hours: 23, minutes: 59, seconds: 59 });
+        only(T.decomposeRemaining(local(2024, 2, 29), local(2028, 2, 29)), { years: 4 });
+      });
+      test('restante: somar as partes reconstrói exatamente o intervalo', () => {
+        let seed = 20261005;
+        const rnd = () => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+        const base = local(2019, 1, 1);
+        for (let i = 0; i < 4000; i++) {
+          const from = base + Math.floor(rnd() * 12 * 365 * T.DAY);
+          const span = Math.floor(Math.pow(rnd(), 3) * 95 * 365.25 * T.DAY) + 1;
+          const to = from + span;
+          const { p, back } = recompose(from, to);
+          if (back !== to) throw new Error('recomposição falhou: ' + new Date(from).toISOString() + ' → ' + new Date(to).toISOString());
+          ok(p.wholeSeconds === Math.ceil(span / 1000), 'segundos inteiros');
+          ok(p.months <= 11 && p.weeks <= 4 && p.days <= 6 && p.hours <= 24 && p.minutes <= 59 && p.seconds <= 59, 'faixas das unidades');
+          for (const k of KEYS) ok(p[k] >= 0 && Number.isInteger(p[k]), k + ' inteiro e não negativo');
+        }
+      });
+      test('restante: uma única fonte — countdown() concorda com computeState()', () => {
+        const start = local(2026, 3, 1, 8);
+        const hg = { start, end: T.addDuration(start, { months: 2 }) };
+        const running = T.countdown(hg, start + 90061000 + 400); // 1 d 1 h 1 min 1,4 s depois
+        eq(running.status, 'running');
+        eq(running.remaining, T.computeState(hg, start + 90061400).remaining);
+        ok(running.nextChangeIn > 0 && running.nextChangeIn <= 1000, 'próxima mudança dentro de 1 s');
+        eq(running.nextChangeIn, 600);
+        const pending = T.countdown(hg, start - 5 * T.DAY);
+        eq(pending.status, 'pending');
+        only(pending.parts, { months: 2 });
+        eq(pending.nextChangeIn, 5 * T.DAY);
+        eq(T.countdown(hg, hg.end).status, 'finished');
+      });
+      test('restante: exibição omite unidades maiores zeradas e mantém as do meio', () => {
+        const keys = (parts, o) => F.countdownUnits(parts, o).map((u) => u.key).join(' ');
+        eq(keys({ seconds: 9 }), 'seconds');
+        eq(keys({ minutes: 4, seconds: 0 }), 'minutes seconds');
+        eq(keys({ days: 2, hours: 0, minutes: 5, seconds: 0 }), 'days hours minutes seconds');
+        eq(keys({ years: 93, months: 11, weeks: 4, days: 1, hours: 23, minutes: 59, seconds: 48 }), KEYS.join(' '));
+        eq(keys({ weeks: 1 }, { trimTrailing: true }), 'weeks');
+        eq(keys({}), '');
+        const u = F.countdownUnits({ months: 1, weeks: 2, days: 1, hours: 1, minutes: 1, seconds: 1 });
+        eq(u.map((x) => x.label).join(' '), 'mês semanas dia hora minuto segundo');
+        eq(F.countdownUnits({ years: 1, months: 2 })[0].label, 'ano');
+        eq(F.formatCountdown({ months: 2, weeks: 1, days: 3, hours: 4, seconds: 8 }), '2 meses, 1 semana, 3 dias, 4 horas e 8 segundos');
+        eq(F.formatCountdown({}), '0 segundos');
+      });
+      test('reinício gravado antes da virada: início próximo não é "espera"', () => {
+        const now = local(2026, 5, 12, 9, 30, 0);
+        const hg = { name: 'x', duration: { minutes: 30 }, start: now - 5 * T.HOUR, end: now - 4 * T.HOUR };
+        const next = A.model.restartInterval(hg, now + 2100);
+        eq(next.start, now + 2100);
+        eq(next.end - next.start, 30 * T.MINUTE);
+        eq(F.describeStatus(next, now).text, 'Começou agora');
+        only(T.countdown(next, now).parts, { minutes: 30 });
+        eq(F.describeStatus({ start: now + T.DAY, end: now + 2 * T.DAY }, now).status, 'pending');
       });
 
       /* Areia durante a virada --------------------------------------- */

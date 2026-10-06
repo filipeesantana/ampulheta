@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const CACHE_PREFIX = 'ampulheta-';
 const CACHE = CACHE_PREFIX + VERSION + '@' + self.registration.scope;
 
@@ -45,7 +45,7 @@ const ASSETS = [
   './js/ui-stage.js',
   './js/ui-settings.js',
   './js/app.js',
-  './assets/fonts/inter-latin-wght-normal.woff2',
+  './assets/fonts/ibm-plex-sans-latin-wght-normal.woff2',
   './assets/icons/favicon.svg',
   './assets/icons/favicon-32.png',
   './assets/icons/apple-touch-icon.png',

@@ -62,7 +62,9 @@
   }
 
   .modal__inner {
-    padding: 20px 18px calc(18px + var(--safe-bottom));
+    --pad-x: 18px;
+    --pad-b: calc(18px + var(--safe-bottom));
+    padding: 20px var(--pad-x) var(--pad-b);
   }
 
   .popover__inner {

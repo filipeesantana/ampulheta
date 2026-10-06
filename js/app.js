@@ -11,7 +11,7 @@
   const { isTypingTarget } = A.utils;
   const F = A.format;
 
-  A.VERSION = '2.0.0';
+  A.VERSION = '2.1.0';
 
   let currentId = null;
   let lastNavIndex = 0;
@@ -161,8 +161,11 @@
         case 'restart': {
           if (A.stage.isFlipping()) return;
           if (!(await confirmRestart(hg))) return;
+          // Enquanto a pergunta esteve aberta, a ampulheta pode ter mudado.
+          const target = current();
+          if (!target || target.id !== hg.id || A.stage.isFlipping()) return;
           A.panels.closeAll();
-          const record = await A.stage.restart(hg);
+          const record = await A.stage.restart(target);
           if (record) A.dialogs.toast('Ampulheta reiniciada.');
           break;
         }
@@ -263,6 +266,11 @@
       case 'i':
       case 'I':
         if (!intro) A.panels.openInfo();
+        break;
+      case 'r':
+      case 'R':
+        if (intro) handled = false;
+        else runAction('restart');
         break;
       case 'm':
       case 'M':

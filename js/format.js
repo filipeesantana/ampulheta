@@ -87,6 +87,41 @@
     return formatPercentHuman(fraction);
   }
 
+  const COUNTDOWN_UNITS = [
+    { key: 'years', one: 'ano', many: 'anos' },
+    { key: 'months', one: 'mês', many: 'meses' },
+    { key: 'weeks', one: 'semana', many: 'semanas' },
+    { key: 'days', one: 'dia', many: 'dias' },
+    { key: 'hours', one: 'hora', many: 'horas' },
+    { key: 'minutes', one: 'minuto', many: 'minutos' },
+    { key: 'seconds', one: 'segundo', many: 'segundos' }
+  ];
+
+  /**
+   * Unidades a exibir numa contagem regressiva: da maior unidade não nula até
+   * os segundos. Unidades maiores zeradas são omitidas; zeros intermediários
+   * permanecem, para que nada mude de lugar a cada segundo. Com
+   * { trimTrailing: true } os zeros finais também saem (contagem parada).
+   * Devolve [{ key, value, text, label }]; lista vazia quando o tempo acabou.
+   */
+  function countdownUnits(parts, options) {
+    const first = COUNTDOWN_UNITS.findIndex((u) => parts[u.key] > 0);
+    if (first === -1) return [];
+    let last = COUNTDOWN_UNITS.length - 1;
+    // Contagem parada (ainda não começou): os zeros finais não informam nada.
+    if (options && options.trimTrailing) while (last > first && !(parts[COUNTDOWN_UNITS[last].key] > 0)) last -= 1;
+    return COUNTDOWN_UNITS.slice(first, last + 1).map((u) => {
+      const value = parts[u.key] || 0;
+      return { key: u.key, value, text: formatInteger(value), label: value === 1 ? u.one : u.many };
+    });
+  }
+
+  /** Contagem por extenso: "2 meses, 1 semana, 3 dias, 4 horas e 8 segundos". */
+  function formatCountdown(parts) {
+    const out = COUNTDOWN_UNITS.filter((u) => parts[u.key] > 0).map((u) => plural(parts[u.key], u));
+    return out.length ? joinList(out) : '0 segundos';
+  }
+
   function plural(n, unit) {
     return formatInteger(n) + ' ' + (n === 1 ? unit.one : unit.many);
   }
@@ -203,6 +238,8 @@
   function describeStatus(hourglass, at) {
     const now = typeof at === 'number' ? at : T.now();
     const s = T.computeState(hourglass, now);
+    // Recém-reiniciada: o início coincide com o fim da virada.
+    if (s.status === 'pending' && s.untilStart <= T.STARTING_WINDOW) return { status: 'running', text: 'Começou agora' };
     if (s.status === 'pending') return { status: s.status, text: 'Começa em ' + formatSpan(now, hourglass.start, 1) };
     if (s.status === 'finished') return { status: s.status, text: 'Terminou' };
     if (s.elapsed < T.MINUTE) return { status: s.status, text: 'Começou agora' };
@@ -218,6 +255,8 @@
     formatPercentHuman,
     formatPercentShort,
     describeStatus,
+    countdownUnits,
+    formatCountdown,
     formatDurationParts,
     formatInteger,
     formatFixedTruncated,

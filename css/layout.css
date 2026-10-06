@@ -37,9 +37,8 @@
 
 .topbar__brand {
   margin-left: 6px;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   color: var(--ink-3);
 }
 
@@ -87,11 +86,9 @@
   margin-bottom: 2px;
   font-size: var(--fs-md);
   color: var(--ink-2);
-  animation: fade-in 600ms var(--ease) both;
-}
-
-.dock__status-text {
-  letter-spacing: 0.01em;
+  transition: opacity var(--t-slow) var(--ease);
+  /* Sem preenchimento: terminada a entrada, a opacidade volta a obedecer aos estados. */
+  animation: fade-in 600ms var(--ease);
 }
 
 .switcher {
@@ -136,8 +133,7 @@
   padding: 0 12px 0 18px;
   border-radius: 999px;
   font-size: var(--fs-lg);
-  font-weight: 450;
-  letter-spacing: -0.005em;
+  font-weight: var(--fw-medium);
   color: var(--ink);
   transition: background-color var(--t) var(--ease);
 }
@@ -166,8 +162,7 @@
 
 .dock__position {
   min-height: 18px;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-xs);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -202,20 +197,16 @@
 }
 
 .intro__brand {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   color: var(--ink-3);
-  padding-left: 0.32em;
 }
 
 .intro__title {
   margin-bottom: 8px;
-  font-size: clamp(24px, 2.6vw, 32px);
-  font-weight: 300;
-  line-height: 1.2;
-  letter-spacing: -0.015em;
+  font-size: clamp(22px, 2.2vw, 26px);
+  font-weight: var(--fw-medium);
+  line-height: 1.25;
   color: var(--ink);
 }
 
@@ -257,6 +248,12 @@ body.is-booting .dock {
   opacity: 0;
 }
 
+/* Tela cheia: o documento inteiro é a raiz — palco, controles, painéis e avisos. */
+:root:fullscreen,
+:root:fullscreen body {
+  background: var(--bg);
+}
+
 /* Durante a virada, os controles recuam discretamente. */
 body.is-flipping .topbar,
 body.is-flipping .dock__status,
@@ -264,30 +261,48 @@ body.is-flipping .dock__position {
   opacity: 0.35;
 }
 
-body.is-contemplating .topbar,
+/*
+   Contemplação: tudo se recolhe, menos (discretamente) o nome.
+   Um controle recolhido fica invisível E fora do alcance do ponteiro; ao
+   reaparecer (qualquer interação → .show-controls) volta a ser visível E
+   clicável. Nunca "visível, mas inalcançável", nem o contrário.
+*/
+body.is-contemplating .topbar > *,
 body.is-contemplating .dock__status,
-body.is-contemplating .dock__position,
 body.is-contemplating .switcher__arrow,
 body.is-contemplating .switcher__caret {
   opacity: 0;
   pointer-events: none;
 }
 
+body.is-contemplating:not(.show-controls) .dock__status {
+  animation: none;
+}
+
+/* A posição (“3 / 8”) cede o lugar: o rodapé fica só com o estado e o nome,
+   e o enquadramento reserva esse espaço — nada se sobrepõe à ampulheta. */
+body.is-contemplating .dock__position {
+  display: none;
+}
+
 /* O nome permanece, bem discreto (se a preferência permitir). */
 body.is-contemplating .switcher__current {
   pointer-events: none;
   color: var(--ink-3);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
 }
 
 body.is-contemplating.hide-name .switcher__current {
   opacity: 0;
 }
 
-body.is-contemplating.show-controls .topbar,
+/* Com interação: informações, ações (inclui Reiniciar), sair, estado e navegação. */
+body.is-contemplating.show-controls #btn-info,
+body.is-contemplating.show-controls #btn-actions,
+body.is-contemplating.show-controls #btn-contemplate,
+body.is-contemplating.show-controls .dock__status,
 body.is-contemplating.show-controls .switcher__arrow:not(:disabled),
-body.is-contemplating.show-controls .switcher__caret,
-body.is-contemplating.show-controls .dock__position {
+body.is-contemplating.show-controls .switcher__caret {
   opacity: 1;
   pointer-events: auto;
 }
@@ -298,13 +313,9 @@ body.is-contemplating.show-controls .switcher__current {
   color: var(--ink);
 }
 
-body.is-contemplating.show-controls #btn-menu,
-body.is-contemplating.show-controls .topbar__brand,
-body.is-contemplating.show-controls .topbar__new,
-body.is-contemplating.show-controls #btn-info,
-body.is-contemplating.show-controls #btn-actions {
-  opacity: 0;
-  pointer-events: none;
+/* Durante a virada os controles recuam, mas continuam ao alcance. */
+body.is-contemplating.show-controls.is-flipping .dock__status {
+  opacity: 0.35;
 }
 
 .topbar > *,

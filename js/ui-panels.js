@@ -29,9 +29,9 @@
     [
       'menu-list', 'menu-empty', 'menu-archived', 'menu-archived-wrap', 'menu-archived-count',
       'picker-list', 'picker-empty', 'picker-search', 'picker-search-wrap', 'actions-name',
-      'info-title', 'info-status', 'info-bar', 'info-grain', 'info-start', 'info-end', 'info-duration',
-      'info-elapsed', 'info-remaining', 'info-pct', 'info-pct-rest', 'info-grains', 'info-fallen',
-      'info-left', 'info-next', 'info-tz', 'info-restart', 'btn-actions'
+      'info-title', 'info-status', 'info-countdown', 'info-done', 'info-remaining-note', 'info-bar', 'info-grain',
+      'info-start', 'info-end', 'info-duration', 'info-elapsed', 'info-pct', 'info-pct-rest', 'info-grains',
+      'info-fallen', 'info-left', 'info-next', 'info-tz', 'info-restart', 'btn-actions'
     ].forEach((id) => (E[id] = qs('#' + id)));
 
     // Menu
@@ -230,20 +230,106 @@
   }
 
   let lastBar = -1;
+  let staticKey = '';
+  let countdownKey = null;
+  let countdownNodes = [];
+  let lastCountdownLabel = '';
 
+  /** Grupos da contagem: unidades de calendário em cima, do relógio embaixo. */
+  const CLOCK_KEYS = ['hours', 'minutes', 'seconds'];
+
+  /**
+   * Monta a grade da contagem regressiva. Só é refeita quando o conjunto de
+   * unidades visíveis muda (ex.: os dias chegam a zero); a cada segundo apenas
+   * os textos que mudaram são trocados.
+   */
+  function buildCountdown(units) {
+    const host = E['info-countdown'];
+    clear(host);
+    countdownNodes = [];
+    const rows = units.length > 4
+      ? [units.filter((u) => !CLOCK_KEYS.includes(u.key)), units.filter((u) => CLOCK_KEYS.includes(u.key))]
+      : [units];
+    rows.forEach((row, index) => {
+      const rowEl = el('div', { class: 'countdown__row' + (index === 0 ? ' countdown__row--lead' : '') });
+      row.forEach((u) => {
+        const value = el('span', { class: 'countdown__value num', text: u.text });
+        const label = el('span', { class: 'countdown__label', text: u.label });
+        rowEl.appendChild(el('div', { class: 'countdown__unit' }, [value, label]));
+        countdownNodes.push({ key: u.key, value, label });
+      });
+      host.appendChild(rowEl);
+    });
+  }
+
+  function renderCountdown(hg, cd) {
+    const waiting = cd.status === 'pending' && cd.state.untilStart > T.STARTING_WINDOW;
+    const units = F.countdownUnits(cd.parts, { trimTrailing: waiting });
+    const finished = cd.status === 'finished' || !units.length;
+    const key = finished ? '' : units.map((u) => u.key).join(' ');
+    if (key !== countdownKey) {
+      countdownKey = key;
+      E['info-countdown'].hidden = finished;
+      E['info-done'].hidden = !finished;
+      if (finished) {
+        clear(E['info-countdown']);
+        countdownNodes = [];
+      } else buildCountdown(units);
+    } else if (!finished) {
+      units.forEach((u, i) => {
+        const node = countdownNodes[i];
+        setText(node.value, u.text);
+        setText(node.label, u.label);
+      });
+    }
+    // Leitores de tela: a frase completa, sem anúncios a cada segundo.
+    const label = 'Tempo restante: ' + (finished ? 'terminou' : F.formatCountdown(cd.parts));
+    if (label !== lastCountdownLabel) {
+      lastCountdownLabel = label;
+      E['info-countdown'].setAttribute('aria-label', label);
+    }
+
+    let note = '';
+    if (finished) note = 'Em ' + F.formatDateTime(hg.end, F.needsSeconds(hg)) + '.';
+    else if (waiting) note = 'Ainda não começou — começa em ' + F.formatSpan(cd.state.now, hg.start, 2) + '.';
+    setText(E['info-remaining-note'], note);
+    E['info-remaining-note'].hidden = !note;
+  }
+
+  /** Dados que só mudam quando a ampulheta muda (nome, período, grãos). */
+  function renderInfoStatic(hg, model, now) {
+    const key = [hg.id, hg.updatedAt, hg.start, hg.end, hg.name].join('|');
+    if (key === staticKey) return;
+    staticKey = key;
+    const withSec = F.needsSeconds(hg);
+    setText(E['info-title'], hg.name);
+    setText(E['info-start'], F.formatDateTime(hg.start, withSec));
+    setText(E['info-end'], F.formatDateTime(hg.end, withSec));
+    setText(E['info-duration'], F.formatDurationParts(hg.duration, 6));
+    const tz = T.timeZoneLabel(now);
+    setText(E['info-tz'], tz ? 'Horários no fuso local — ' + tz + '.' : '');
+    setText(E['info-grain'], 'cerca de ' + F.formatDurationCompact(model.grainMs));
+    setText(E['info-grains'], F.formatInteger(model.count));
+  }
+
+  /** Dados vivos: recalculados do relógio a cada atualização, nunca decrementados. */
   function renderInfo() {
     const hg = A.app.current();
     if (!hg) return;
     const now = T.now();
-    const s = T.computeState(hg, now);
+    const cd = T.countdown(hg, now);
+    const s = cd.state;
     const model = A.grains.createModel(hg);
     const g = A.grains.describe(model, now);
-    const withSec = F.needsSeconds(hg);
+    const starting = s.status === 'pending' && s.untilStart <= T.STARTING_WINDOW;
 
-    setText(E['info-title'], hg.name);
-    let status = s.status === 'pending' ? 'Ainda não começou' : s.status === 'finished' ? 'Terminou' : 'Em andamento';
+    renderInfoStatic(hg, model, now);
+
+    let status = s.status === 'finished' ? 'Terminou' : s.status === 'pending' && !starting ? 'Ainda não começou' : 'Em andamento';
     if (hg.archived) status += ' · Arquivada';
     setText(E['info-status'], status);
+
+    renderCountdown(hg, cd);
 
     setText(E['info-pct'], F.formatPercentHuman(s.progress));
     setText(E['info-pct-rest'], F.formatPercentHuman(s.remainingFraction));
@@ -252,60 +338,68 @@
       E['info-bar'].style.transform = 'scaleX(' + bar + ')';
       lastBar = bar;
     }
+    setText(E['info-elapsed'], s.status === 'pending' ? '—' : s.elapsed < T.SECOND ? 'menos de 1 segundo' : F.formatSpan(hg.start, Math.min(now, hg.end), 3));
 
-    setText(E['info-elapsed'], s.status === 'pending' ? '—' : F.formatSpan(hg.start, Math.min(now, hg.end), 3));
-    setText(E['info-remaining'], s.status === 'finished' ? '—' : F.formatSpan(Math.max(now, hg.start), hg.end, 3));
-    setText(E['info-duration'], F.formatDurationParts(hg.duration, 3));
-    setText(E['info-start'], F.formatDateTime(hg.start, withSec));
-    setText(E['info-end'], F.formatDateTime(hg.end, withSec));
-    const tz = T.timeZoneLabel(now);
-    setText(E['info-tz'], tz ? 'No fuso horário local — ' + tz + '.' : '');
-
-    setText(E['info-grain'], 'Cada grão representa cerca de ' + F.formatDurationCompact(model.grainMs) + '.');
-    setText(E['info-grains'], F.formatInteger(g.count));
     setText(E['info-fallen'], F.formatInteger(g.fallen));
     setText(E['info-left'], F.formatInteger(g.remaining));
     let next;
     if (s.status === 'finished') next = '—';
     else if (model.grainMs < 1000) next = 'contínuo';
-    else if (s.status === 'pending') next = 'em ' + F.formatSpan(now, now + g.nextIn, 2);
+    else if (s.status === 'pending') next = starting ? 'agora' : 'em ' + F.formatSpan(now, now + g.nextIn, 2);
     else next = g.nextIn < 1000 ? 'agora' : 'em ' + F.formatDurationCompact(g.nextIn);
     setText(E['info-next'], next);
   }
 
-  function scheduleInfoTick() {
+  function stopInfoTick() {
     clearTimeout(infoTimer);
     infoTimer = 0;
-    if (!info.open || document.hidden) return;
-    // Alinha as atualizações às viradas de segundo.
-    const delay = 1000 - (Date.now() % 1000) + 5;
+  }
+
+  /**
+   * Agenda a próxima atualização para o instante em que o valor exibido muda
+   * (a virada de segundo da contagem). Um único timer; nenhum com o painel
+   * fechado, com a aba oculta ou depois do fim.
+   */
+  function scheduleInfoTick() {
+    stopInfoTick();
+    const hg = A.app.current();
+    if (!info.open || document.hidden || !hg) return;
+    const cd = T.countdown(hg);
+    if (cd.status === 'finished') return;
+    let delay = cd.nextChangeIn;
+    if (cd.status === 'pending') delay = Math.min(delay, 1000 - (cd.state.now % 1000));
+    delay = Math.max(16, Math.min(delay, 1000)) + 4;
     infoTimer = setTimeout(() => {
       infoTimer = 0;
+      if (!info.open) return;
       renderInfo();
       scheduleInfoTick();
     }, delay);
   }
 
+  function resetInfoCache() {
+    lastBar = -1;
+    staticKey = '';
+    countdownKey = null;
+    countdownNodes = [];
+    lastCountdownLabel = '';
+  }
+
   function openInfo() {
     if (!A.app.current()) return;
-    lastBar = -1;
-    renderInfo();
+    resetInfoCache();
+    renderInfo(); // já no primeiro quadro, sem valor provisório
     A.dialogs.open(info, {
       initialFocus: qs('[data-close]', info),
-      onClose: () => {
-        clearTimeout(infoTimer);
-        infoTimer = 0;
-      }
+      onClose: stopInfoTick
     });
     scheduleInfoTick();
   }
 
   document.addEventListener('visibilitychange', () => {
     if (!info) return;
-    if (document.hidden) {
-      clearTimeout(infoTimer);
-      infoTimer = 0;
-    } else if (info.open) {
+    if (document.hidden) stopInfoTick();
+    else if (info.open) {
       renderInfo();
       scheduleInfoTick();
     }
@@ -315,8 +409,10 @@
     if (menu && menu.open) renderMenu();
     if (picker && picker.open) renderPicker();
     if (info && info.open) {
-      if (A.app.current()) renderInfo();
-      else A.dialogs.close(info);
+      if (A.app.current()) {
+        renderInfo();
+        scheduleInfoTick();
+      } else A.dialogs.close(info);
     }
     if (actions && actions.open && !A.app.current()) A.dialogs.close(actions);
   }
